@@ -1,0 +1,18 @@
+[project]
+name = "reyvin-api"
+version = "0.1.0"
+description = "Local AI Backend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "ollama>=0.6.2",
+    "uvicorn>=0.52.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = false
