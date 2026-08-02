@@ -1,3 +1,7 @@
+import os
+
+os.environ["LLM_PROVIDER"] = "fake"
+
 from fastapi.testclient import TestClient
 
 from app.main import app

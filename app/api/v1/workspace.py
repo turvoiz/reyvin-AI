@@ -5,6 +5,7 @@ from app.workspace.indexer import indexer
 from app.services.workspace_service import workspace_service
 from app.services.explain_service import explain_service
 from app.services.review_service import review_service
+from app.services.insight_service import insight_service
 from app.schemas.workspace import *
 
 router = APIRouter(
@@ -140,3 +141,42 @@ def review(
         model,
         thinking,
     )
+
+
+@router.get("/stats")
+def stats():
+
+    return {
+        "symbols": len(workspace_cache.symbols()),
+        "knowledge_cache": len(workspace_cache._knowledge),
+    }
+
+
+@router.get("/insight/{symbol}")
+def insight(
+    symbol: str,
+    model: str = "auto",
+    thinking: bool = False,
+):
+    return insight_service.insight(
+        symbol,
+        model,
+        thinking,
+    )
+
+
+@router.post("/rebuild")
+def rebuild():
+
+    return workspace_cache.rebuild()
+
+@router.get("/changed")
+def changed():
+
+    return workspace_cache.changed_files()
+
+
+@router.post("/accept")
+def accept():
+
+    return workspace_cache.accept_changes()

@@ -8,6 +8,9 @@ from app.workspace.symbols import build_symbol_index
 from app.workspace.tracer import trace_engine
 from app.workspace.knowledge import knowledge_builder
 from app.workspace.context_builder import context_builder
+from app.workspace.storage.snapshot import workspace_snapshot
+from app.workspace.index.file_state import file_state
+from app.workspace.rebuilder.incremental import incremental_rebuilder
 
 
 class WorkspaceCache:
@@ -27,10 +30,29 @@ class WorkspaceCache:
         self._calls = {}
 
         self._trace = {}
+        self._knowledge = {}
+
+        self._files = {}
+
+        self._files = {}
 
     def load(self, workspace="."):
 
         self.workspace = workspace
+
+        self._knowledge.clear()
+
+        snapshot = workspace_snapshot.load()
+
+        if snapshot:
+
+            print("[Workspace] Loaded snapshot")
+
+            self.import_data(snapshot)
+
+            return
+
+        print("[Workspace] Building workspace...")
 
         self._symbols = build_symbol_index(workspace)
 
@@ -43,6 +65,23 @@ class WorkspaceCache:
         self._calls = call_graph.build(workspace)
 
         self._trace = trace_engine
+
+        self._files = file_state.scan(workspace)
+
+        workspace_snapshot.save(
+            self.export()
+        )
+
+
+
+    def rebuild(self):
+
+        result = self.accept_changes()
+
+        return incremental_rebuilder.rebuild(
+            self,
+            result["changed"],
+        )
 
     def reload(self):
 
@@ -134,10 +173,80 @@ class WorkspaceCache:
 
     def knowledge(self, symbol):
 
-        return knowledge_builder.build(
+        if symbol in self._knowledge:
+            return self._knowledge[symbol]
+
+        knowledge = knowledge_builder.build(
             self,
             symbol,
         )
+
+        self._knowledge[symbol] = knowledge
+
+        return knowledge
+
+
+
+
+
+    def import_data(self, data):
+
+        self._symbols = data["symbols"]
+        self._graph = data["graph"]
+        self._references = data["references"]
+        self._resolver = data["resolver"]
+        self._calls = data["calls"]
+        self._files = data.get("files", {})
+
+        self._trace = trace_engine
+
+
+    def export(self):
+
+        return {
+            "symbols": self._symbols,
+            "graph": self._graph,
+            "references": self._references,
+            "resolver": self._resolver,
+            "calls": self._calls,
+            "files": self._files,
+        }
+
+
+
+
+
+
+    def accept_changes(self):
+
+        result = file_state.changed(
+            self._files,
+            self.workspace,
+        )
+
+        self._files = result["state"]
+
+        workspace_snapshot.save(
+            self.export()
+        )
+
+        return result
+
+
+    def changed_files(self):
+
+        return file_state.changed(
+            self._files,
+            self.workspace,
+        )
+
+
+    def stats(self):
+
+        return {
+            "symbols": len(self._symbols),
+            "knowledge_cache": len(self._knowledge),
+        }
 
 
     def get(self, name):

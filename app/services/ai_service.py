@@ -1,4 +1,4 @@
-from app.llm.providers.ollama import ollama_provider
+from app.llm.provider_factory import get_provider
 
 
 class AIService:
@@ -19,7 +19,9 @@ class AIService:
 
         selected = self.choose_model(model)
 
-        result = ollama_provider.chat(
+        provider = get_provider()
+
+        result = provider.chat(
             model=selected,
             message=message,
             thinking=thinking,
