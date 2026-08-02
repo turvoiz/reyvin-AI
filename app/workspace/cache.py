@@ -1,20 +1,19 @@
 from app.workspace.call_graph import call_graph
-from app.workspace.impact import impact_analyzer
+from app.workspace.context_builder import context_builder
 from app.workspace.deadcode import deadcode_analyzer
 from app.workspace.graph import dependency_graph
+from app.workspace.impact import impact_analyzer
+from app.workspace.index.file_state import file_state
+from app.workspace.knowledge import knowledge_builder
+from app.workspace.rebuilder.incremental import incremental_rebuilder
 from app.workspace.references import reference_index
 from app.workspace.resolver import resolver_index
+from app.workspace.storage.snapshot import workspace_snapshot
 from app.workspace.symbols import build_symbol_index
 from app.workspace.tracer import trace_engine
-from app.workspace.knowledge import knowledge_builder
-from app.workspace.context_builder import context_builder
-from app.workspace.storage.snapshot import workspace_snapshot
-from app.workspace.index.file_state import file_state
-from app.workspace.rebuilder.incremental import incremental_rebuilder
 
 
 class WorkspaceCache:
-
     def __init__(self):
 
         self.workspace = "."
@@ -45,7 +44,6 @@ class WorkspaceCache:
         snapshot = workspace_snapshot.load()
 
         if snapshot:
-
             print("[Workspace] Loaded snapshot")
 
             self.import_data(snapshot)
@@ -68,11 +66,7 @@ class WorkspaceCache:
 
         self._files = file_state.scan(workspace)
 
-        workspace_snapshot.save(
-            self.export()
-        )
-
-
+        workspace_snapshot.save(self.export())
 
     def rebuild(self):
 
@@ -110,7 +104,6 @@ class WorkspaceCache:
 
         return self._calls["reverse"].get(symbol, [])
 
-
     def impact(self, symbol):
 
         affected = impact_analyzer.analyze(
@@ -121,7 +114,6 @@ class WorkspaceCache:
         files = set()
 
         for target in affected:
-
             info = self._symbols.get(target)
 
             if info:
@@ -149,17 +141,12 @@ class WorkspaceCache:
             symbol,
         )
 
-
-
     def deadcode(self):
 
         return deadcode_analyzer.analyze(
             self._symbols,
             self._calls["reverse"],
         )
-
-
-
 
     def context(self, symbol):
 
@@ -169,7 +156,6 @@ class WorkspaceCache:
             return ""
 
         return context_builder.build(info)
-
 
     def knowledge(self, symbol):
 
@@ -185,10 +171,6 @@ class WorkspaceCache:
 
         return knowledge
 
-
-
-
-
     def import_data(self, data):
 
         self._symbols = data["symbols"]
@@ -199,7 +181,6 @@ class WorkspaceCache:
         self._files = data.get("files", {})
 
         self._trace = trace_engine
-
 
     def export(self):
 
@@ -212,11 +193,6 @@ class WorkspaceCache:
             "files": self._files,
         }
 
-
-
-
-
-
     def accept_changes(self):
 
         result = file_state.changed(
@@ -226,12 +202,9 @@ class WorkspaceCache:
 
         self._files = result["state"]
 
-        workspace_snapshot.save(
-            self.export()
-        )
+        workspace_snapshot.save(self.export())
 
         return result
-
 
     def changed_files(self):
 
@@ -239,7 +212,6 @@ class WorkspaceCache:
             self._files,
             self.workspace,
         )
-
 
     def invalidate(
         self,
@@ -249,14 +221,12 @@ class WorkspaceCache:
         for symbol in symbols:
             self._knowledge.pop(symbol, None)
 
-
     def stats(self):
 
         return {
             "symbols": len(self._symbols),
             "knowledge_cache": len(self._knowledge),
         }
-
 
     def get(self, name):
         return self._symbols.get(name)

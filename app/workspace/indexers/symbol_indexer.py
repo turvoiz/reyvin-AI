@@ -1,11 +1,10 @@
 from app.workspace.symbols import (
-    build_symbol_index,
     build_file_symbols,
+    build_symbol_index,
 )
 
 
 class SymbolIndexer:
-
     def build(self, workspace):
 
         return build_symbol_index(workspace)
@@ -19,9 +18,7 @@ class SymbolIndexer:
         relative = file
 
         old = [
-            name
-            for name, info in cache._symbols.items()
-            if info["file"] == relative
+            name for name, info in cache._symbols.items() if info["file"] == relative
         ]
 
         for name in old:

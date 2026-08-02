@@ -2,7 +2,6 @@ from app.llm.provider_factory import get_provider
 
 
 class AIService:
-
     def choose_model(self, model: str):
 
         if model == "auto":

@@ -5,7 +5,6 @@ from app.workspace.parser import parse_python_file
 
 
 class DependencyGraph:
-
     def build(self, workspace: str):
 
         root = Path(workspace)
@@ -14,7 +13,6 @@ class DependencyGraph:
         reverse = {}
 
         for file in root.rglob("*.py"):
-
             if any(part in IGNORE_DIRS for part in file.parts):
                 continue
 
@@ -25,7 +23,6 @@ class DependencyGraph:
             graph[relative] = parsed["imports"]
 
             for imp in parsed["imports"]:
-
                 reverse.setdefault(imp, []).append(relative)
 
         return {

@@ -1,5 +1,6 @@
-from app.prompts.explain import explain_prompt
 from app.services.workspace_ai_service import workspace_ai_service
+from app.workspace.cache import workspace_cache
+from app.workspace.planner.workspace_planner import workspace_planner
 
 
 class ExplainService:
@@ -11,11 +12,16 @@ class ExplainService:
         thinking: bool,
     ):
 
+        plan = workspace_planner.plan(
+            workspace_cache,
+            f"Explain {symbol}",
+        )
+
         answer = workspace_ai_service.run(
-            symbol,
-            explain_prompt.build(symbol),
-            model,
-            thinking,
+            plan=plan,
+            question=f"Explain {symbol}",
+            model=model,
+            thinking=thinking,
         )
 
         return {

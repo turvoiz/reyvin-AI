@@ -2,7 +2,6 @@ from app.workspace.call_graph import call_graph
 
 
 class CallIndexer:
-
     def build(self, workspace):
 
         return call_graph.build(workspace)

@@ -2,7 +2,6 @@ import ast
 
 
 class PythonParser(ast.NodeVisitor):
-
     def __init__(self):
         self.classes = []
         self.functions = []
@@ -13,33 +12,36 @@ class PythonParser(ast.NodeVisitor):
         methods = []
 
         for item in node.body:
-
             if isinstance(item, ast.FunctionDef):
+                methods.append(
+                    {
+                        "name": item.name,
+                        "start_line": item.lineno,
+                        "end_line": item.end_lineno,
+                    }
+                )
 
-                methods.append({
-                    "name": item.name,
-                    "start_line": item.lineno,
-                    "end_line": item.end_lineno,
-                })
-
-        self.classes.append({
-            "name": node.name,
-            "methods": methods,
-            "start_line": node.lineno,
-            "end_line": node.end_lineno,
-        })
+        self.classes.append(
+            {
+                "name": node.name,
+                "methods": methods,
+                "start_line": node.lineno,
+                "end_line": node.end_lineno,
+            }
+        )
 
         self.generic_visit(node)
 
     def visit_FunctionDef(self, node):
 
         if isinstance(getattr(node, "parent", None), ast.Module):
-
-            self.functions.append({
-                "name": node.name,
-                "start_line": node.lineno,
-                "end_line": node.end_lineno,
-            })
+            self.functions.append(
+                {
+                    "name": node.name,
+                    "start_line": node.lineno,
+                    "end_line": node.end_lineno,
+                }
+            )
 
         self.generic_visit(node)
 
@@ -62,7 +64,6 @@ def parse_python_file(path: str):
     tree = ast.parse(source)
 
     for node in ast.walk(tree):
-
         for child in ast.iter_child_nodes(node):
             child.parent = node
 

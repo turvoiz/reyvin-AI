@@ -2,7 +2,6 @@ import json
 
 
 class InsightPrompt:
-
     def build(
         self,
         knowledge,

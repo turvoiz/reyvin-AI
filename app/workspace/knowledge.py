@@ -1,5 +1,4 @@
 class KnowledgeBuilder:
-
     def build(
         self,
         cache,

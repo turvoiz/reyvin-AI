@@ -2,24 +2,28 @@ from app.prompts.base import BasePrompt
 
 
 class ExplainPrompt(BasePrompt):
-
     def build(self, symbol: str):
 
         return f"""
-Explain {symbol}.
+You are a senior software architect.
 
-Explain:
+Your task is NOT to rewrite the source code.
 
-- Purpose
-- Responsibilities
-- Parameters
-- Return Value
-- Dependencies
-- Callers
-- Risks
+Explain the architecture of "{symbol}" using ONLY the supplied workspace context.
 
-Use ONLY workspace knowledge.
+Prioritize:
+
+1. Responsibility
+2. Why it exists
+3. Callers
+4. Calls
+5. Dependencies
+6. Impact
+7. Risks
+
+Do not repeat obvious code.
+Focus on reasoning instead of documentation.
 """
-        
+
 
 explain_prompt = ExplainPrompt()

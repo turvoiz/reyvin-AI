@@ -11,7 +11,6 @@ def build_symbol_index(workspace: str):
     symbols = {}
 
     for file in root.rglob("*.py"):
-
         if any(part in IGNORE_DIRS for part in file.parts):
             continue
 
@@ -20,7 +19,6 @@ def build_symbol_index(workspace: str):
         relative = str(file.relative_to(root))
 
         for cls in data["classes"]:
-
             symbols[cls["name"]] = {
                 "name": cls["name"],
                 "type": "class",
@@ -31,7 +29,6 @@ def build_symbol_index(workspace: str):
             }
 
             for method in cls["methods"]:
-
                 fq_name = f"{cls['name']}.{method['name']}"
 
                 symbols[fq_name] = {
@@ -44,7 +41,6 @@ def build_symbol_index(workspace: str):
                 }
 
         for fn in data["functions"]:
-
             symbols[fn["name"]] = {
                 "name": fn["name"],
                 "type": "function",
@@ -69,7 +65,6 @@ def build_file_symbols(path: str, workspace="."):
     symbols = {}
 
     for cls in data["classes"]:
-
         symbols[cls["name"]] = {
             "name": cls["name"],
             "type": "class",
@@ -80,7 +75,6 @@ def build_file_symbols(path: str, workspace="."):
         }
 
         for method in cls["methods"]:
-
             fq = f"{cls['name']}.{method['name']}"
 
             symbols[fq] = {
@@ -93,7 +87,6 @@ def build_file_symbols(path: str, workspace="."):
             }
 
     for fn in data["functions"]:
-
         symbols[fn["name"]] = {
             "name": fn["name"],
             "type": "function",
@@ -103,4 +96,3 @@ def build_file_symbols(path: str, workspace="."):
         }
 
     return symbols
-

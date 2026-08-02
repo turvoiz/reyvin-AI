@@ -5,7 +5,6 @@ from app.services.ai_service import ai_service
 
 
 class InsightAIService:
-
     def run(
         self,
         knowledge,
@@ -23,9 +22,7 @@ class InsightAIService:
             thinking=thinking,
         )
 
-        return json.loads(
-            result["response"]
-        )
+        return json.loads(result["response"])
 
 
 insight_ai_service = InsightAIService()

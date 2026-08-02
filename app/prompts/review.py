@@ -5,14 +5,14 @@ class ReviewPrompt(BasePrompt):
 
     def build(self, symbol: str):
 
-        return """
-Review this code.
+        return f"""
+Review {symbol}
 
 Return ONLY valid JSON.
 
 Schema:
 
-{
+{{
   "summary": "",
   "strengths": [],
   "weaknesses": [],
@@ -20,7 +20,7 @@ Schema:
   "performance": [],
   "security": [],
   "refactor": []
-}
+}}
 
 Return JSON only.
 """

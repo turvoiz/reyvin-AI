@@ -1,11 +1,8 @@
-from app.workspace.cache import workspace_cache
-from app.services.explain_service import explain_service
-from app.services.review_service import review_service
 from app.services.insight_ai_service import insight_ai_service
+from app.workspace.cache import workspace_cache
 
 
 class InsightService:
-
     def insight(
         self,
         symbol: str,

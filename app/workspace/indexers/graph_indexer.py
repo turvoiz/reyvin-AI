@@ -2,7 +2,6 @@ from app.workspace.graph import dependency_graph
 
 
 class GraphIndexer:
-
     def build(
         self,
         workspace,

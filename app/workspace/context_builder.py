@@ -2,7 +2,6 @@ from app.workspace.reader import read_file
 
 
 class ContextBuilder:
-
     def build(self, symbol: dict):
 
         source = read_file(symbol["file"])

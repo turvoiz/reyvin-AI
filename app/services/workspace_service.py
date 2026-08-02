@@ -1,43 +1,33 @@
-from app.workspace.symbol_matcher import symbol_matcher
+from app.services.workspace_ai_service import workspace_ai_service
 from app.workspace.cache import workspace_cache
-from app.workspace.context_builder import context_builder
-from app.services.ai_service import ai_service
-from app.workspace.prompt_builder import prompt_builder
+from app.workspace.planner.workspace_planner import workspace_planner
 
 
 class WorkspaceService:
-
     def search(self, query: str):
         return workspace_cache.get(query)
 
-    def ask(self, question: str, model: str, thinking: bool):
+    def ask(
+        self,
+        question: str,
+        model: str,
+        thinking: bool,
+    ):
 
-        match = symbol_matcher.match(
-            workspace_cache.symbols(),
+        plan = workspace_planner.plan(
+            workspace_cache,
             question,
         )
 
-        if not match:
+        if not plan["symbols"]:
             return "Saya tidak menemukan symbol yang dimaksud."
 
-        name, _ = match
-
-        knowledge = workspace_cache.knowledge(name)
-
-        prompt = prompt_builder.build(
-            knowledge,
-            question,
-        )
-
-        result = ai_service.chat(
+        return workspace_ai_service.run(
+            plan=plan,
+            question=question,
             model=model,
-            message=prompt,
             thinking=thinking,
         )
-
-        return result["response"]
-
-
 
 
 workspace_service = WorkspaceService()

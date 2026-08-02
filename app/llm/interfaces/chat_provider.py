@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 
 
 class ChatProvider(ABC):
-
     @abstractmethod
     def chat(
         self,

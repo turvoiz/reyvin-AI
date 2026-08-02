@@ -1,13 +1,13 @@
-from app.workspace.search.symbol_search import symbol_search
 from fastapi import APIRouter
 
+from app.schemas.workspace import *
+from app.services.explain_service import explain_service
+from app.services.insight_service import insight_service
+from app.services.review_service import review_service
+from app.services.workspace_service import workspace_service
 from app.workspace.cache import workspace_cache
 from app.workspace.indexer import indexer
-from app.services.workspace_service import workspace_service
-from app.services.explain_service import explain_service
-from app.services.review_service import review_service
-from app.services.insight_service import insight_service
-from app.schemas.workspace import *
+from app.workspace.search.symbol_search import symbol_search
 
 router = APIRouter(
     prefix="/workspace",
@@ -29,10 +29,6 @@ def reload_workspace():
         "message": "Workspace reloaded",
         "symbols": len(workspace_cache.symbols()),
     }
-
-
-
-
 
 
 @router.get("/calls")
@@ -85,10 +81,6 @@ def ask(request: WorkspaceAskRequest):
 
 
 from app.workspace.tracer import trace_engine
-
-
-
-
 
 
 @router.get("/knowledge/{symbol}")
@@ -171,6 +163,7 @@ def rebuild():
 
     return workspace_cache.rebuild()
 
+
 @router.get("/changed")
 def changed():
 
@@ -184,7 +177,7 @@ def accept():
 
 
 @router.get("/search")
-def search(
+def search_symbol(
     q: str,
     limit: int = 20,
 ):

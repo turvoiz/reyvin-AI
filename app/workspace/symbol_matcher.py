@@ -2,7 +2,6 @@ from difflib import SequenceMatcher
 
 
 class SymbolMatcher:
-
     def match(self, symbols, question):
 
         q = question.lower()
@@ -10,7 +9,6 @@ class SymbolMatcher:
         ranked = []
 
         for name, symbol in symbols.items():
-
             lname = name.lower()
 
             cls = (symbol.get("class") or "").lower()
@@ -45,7 +43,8 @@ class SymbolMatcher:
                         None,
                         lname,
                         q,
-                    ).ratio() * 100
+                    ).ratio()
+                    * 100
                 )
 
             ranked.append((score, len(lname), name, symbol))

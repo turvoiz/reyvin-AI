@@ -1,27 +1,20 @@
 class PromptBuilder:
-
-    def build(self, knowledge, question):
+    def build(
+        self,
+        formatted_context,
+        instruction,
+    ):
 
         return f"""
-You are an expert software engineer.
+You are a senior software architect.
 
-RULES
+Use ONLY the supplied workspace context.
 
-- Never guess.
-- Never invent information.
-- Use ONLY the workspace knowledge below.
+Never invent information.
 
-==================================================
-WORKSPACE KNOWLEDGE
-==================================================
+{instruction}
 
-{knowledge}
-
-==================================================
-QUESTION
-==================================================
-
-{question}
+{formatted_context}
 """
 
 

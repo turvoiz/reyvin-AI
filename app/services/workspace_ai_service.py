@@ -1,26 +1,43 @@
 import json
 
-from app.workspace.cache import workspace_cache
-from app.workspace.prompt_builder import prompt_builder
 from app.services.ai_service import ai_service
+from app.workspace.cache import workspace_cache
+from app.workspace.context.context_assembler import context_assembler
+from app.workspace.context.context_compressor import context_compressor
+from app.workspace.context.context_formatter import context_formatter
+from app.workspace.prompt_builder import prompt_builder
 
 
 class WorkspaceAIService:
-
     def run(
         self,
-        symbol: str,
-        instruction: str,
-        model: str,
-        thinking: bool,
+        plan,
+        question,
+        model,
+        thinking,
     ):
 
-        knowledge = workspace_cache.knowledge(symbol)
+        context = context_assembler.build(
+            workspace_cache,
+            plan["symbols"][0],
+        )
+
+        compressed = context_compressor.compress(
+            context,
+        )
+
+        formatted = context_formatter.format(
+            compressed,
+        )
 
         prompt = prompt_builder.build(
-            knowledge,
-            instruction,
+            formatted,
+            question,
         )
+
+        print("\n================ PROMPT ================\n")
+        print(prompt)
+        print("\n============== END PROMPT ==============\n")
 
         result = ai_service.chat(
             model=model,
@@ -32,7 +49,7 @@ class WorkspaceAIService:
 
         try:
             response = json.loads(response)
-        except Exception:
+        except json.JSONDecodeError:
             pass
 
         return response

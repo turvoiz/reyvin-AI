@@ -2,7 +2,6 @@ from difflib import SequenceMatcher
 
 
 class SymbolSearch:
-
     def search(
         self,
         cache,
@@ -15,7 +14,6 @@ class SymbolSearch:
         results = []
 
         for name, info in cache.symbols().items():
-
             score = SequenceMatcher(
                 None,
                 query,
@@ -26,12 +24,14 @@ class SymbolSearch:
                 score += 1
 
             if score > 0.3:
-                results.append({
-                    "symbol": name,
-                    "score": round(score, 3),
-                    "file": info["file"],
-                    "type": info["type"],
-                })
+                results.append(
+                    {
+                        "symbol": name,
+                        "score": round(score, 3),
+                        "file": info["file"],
+                        "type": info["type"],
+                    }
+                )
 
         results.sort(
             key=lambda x: x["score"],

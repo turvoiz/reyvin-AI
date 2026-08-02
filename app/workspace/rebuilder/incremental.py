@@ -1,12 +1,11 @@
-from app.workspace.indexers.resolver_indexer import resolver_indexer
-from app.workspace.indexers.graph_indexer import graph_indexer
-from app.workspace.indexers.symbol_indexer import symbol_indexer
 from app.workspace.indexers.call_indexer import call_indexer
+from app.workspace.indexers.graph_indexer import graph_indexer
 from app.workspace.indexers.reference_indexer import reference_indexer
+from app.workspace.indexers.resolver_indexer import resolver_indexer
+from app.workspace.indexers.symbol_indexer import symbol_indexer
 
 
 class IncrementalRebuilder:
-
     def rebuild(
         self,
         cache,
@@ -18,7 +17,6 @@ class IncrementalRebuilder:
         rebuilt = []
 
         for file in changed_files:
-
             symbol_indexer.update(
                 cache,
                 file,

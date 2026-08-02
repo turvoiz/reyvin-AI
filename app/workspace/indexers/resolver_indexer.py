@@ -2,7 +2,6 @@ from app.workspace.resolver import resolver_index
 
 
 class ResolverIndexer:
-
     def build(self, workspace):
 
         return resolver_index.build(workspace)

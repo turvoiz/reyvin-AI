@@ -30,6 +30,4 @@ app.include_router(
 
 @app.get("/")
 async def root():
-    return {
-        "message": "Welcome to Reyvin API 🚀"
-    }
+    return {"message": "Welcome to Reyvin API 🚀"}

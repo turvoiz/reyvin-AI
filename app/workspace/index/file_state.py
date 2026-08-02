@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 IGNORE = {
     ".git",
     ".venv",
@@ -11,13 +10,11 @@ IGNORE = {
 
 
 class FileState:
-
     def scan(self, workspace):
 
         result = {}
 
         for f in Path(workspace).rglob("*.py"):
-
             if any(part in IGNORE for part in f.parts):
                 continue
 
@@ -32,15 +29,10 @@ class FileState:
         changed = []
 
         for file, mtime in new_state.items():
-
             if old_state.get(file) != mtime:
                 changed.append(file)
 
-        removed = [
-            file
-            for file in old_state
-            if file not in new_state
-        ]
+        removed = [file for file in old_state if file not in new_state]
 
         return {
             "changed": sorted(changed),

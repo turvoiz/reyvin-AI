@@ -2,7 +2,6 @@ from app.workspace.references import reference_index
 
 
 class ReferenceIndexer:
-
     def build(self, workspace):
 
         return reference_index.build(workspace)
