@@ -30,3 +30,4 @@ build/
 
 # Linux
 *.swp
+.workspace_snapshot.json
