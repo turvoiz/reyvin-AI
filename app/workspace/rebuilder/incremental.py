@@ -1,6 +1,8 @@
+from app.workspace.indexers.resolver_indexer import resolver_indexer
 from app.workspace.indexers.graph_indexer import graph_indexer
 from app.workspace.indexers.symbol_indexer import symbol_indexer
 from app.workspace.indexers.call_indexer import call_indexer
+from app.workspace.indexers.reference_indexer import reference_indexer
 
 
 class IncrementalRebuilder:
@@ -28,6 +30,16 @@ class IncrementalRebuilder:
             )
 
             graph_indexer.update(
+                cache,
+                cache.workspace,
+            )
+
+            reference_indexer.update(
+                cache,
+                file,
+            )
+
+            resolver_indexer.update(
                 cache,
                 cache.workspace,
             )

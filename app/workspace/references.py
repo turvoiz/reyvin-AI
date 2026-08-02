@@ -84,4 +84,34 @@ class ReferenceIndex:
         return index
 
 
+
+    def update_file(
+        self,
+        cache,
+        path,
+        workspace=".",
+    ):
+
+        relative = str(Path(path).relative_to(workspace))
+
+        for refs in cache.values():
+            refs[:] = [
+                r for r in refs
+                if r["file"] != relative
+            ]
+
+        source = Path(path).read_text(
+            encoding="utf-8"
+        )
+
+        tree = ast.parse(source)
+
+        visitor = ReferenceVisitor(relative)
+
+        visitor.visit(tree)
+
+        for symbol, refs in visitor.references.items():
+            cache.setdefault(symbol, []).extend(refs)
+
+
 reference_index = ReferenceIndex()

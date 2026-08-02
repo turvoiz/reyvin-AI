@@ -10,10 +10,14 @@ class ReferenceIndexer:
     def update(
         self,
         cache,
-        workspace,
+        file,
     ):
 
-        cache._references = self.build(workspace)
+        reference_index.update_file(
+            cache._references,
+            file,
+            cache.workspace,
+        )
 
 
 reference_indexer = ReferenceIndexer()
