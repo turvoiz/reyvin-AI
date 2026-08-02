@@ -1,3 +1,4 @@
+from app.workspace.search.symbol_search import symbol_search
 from fastapi import APIRouter
 
 from app.workspace.cache import workspace_cache
@@ -180,3 +181,16 @@ def changed():
 def accept():
 
     return workspace_cache.accept_changes()
+
+
+@router.get("/search")
+def search(
+    q: str,
+    limit: int = 20,
+):
+
+    return symbol_search.search(
+        workspace_cache,
+        q,
+        limit,
+    )

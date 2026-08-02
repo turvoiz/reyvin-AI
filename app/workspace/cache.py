@@ -241,6 +241,15 @@ class WorkspaceCache:
         )
 
 
+    def invalidate(
+        self,
+        symbols,
+    ):
+
+        for symbol in symbols:
+            self._knowledge.pop(symbol, None)
+
+
     def stats(self):
 
         return {

@@ -27,12 +27,16 @@ class SymbolIndexer:
         for name in old:
             cache._symbols.pop(name, None)
 
-        cache._symbols.update(
-            build_file_symbols(
-                file,
-                cache.workspace,
-            )
+        cache.invalidate(old)
+
+        new_symbols = build_file_symbols(
+            file,
+            cache.workspace,
         )
+
+        cache._symbols.update(new_symbols)
+
+        cache.invalidate(new_symbols.keys())
 
 
 symbol_indexer = SymbolIndexer()

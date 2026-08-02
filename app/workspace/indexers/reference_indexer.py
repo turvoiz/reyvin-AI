@@ -1,4 +1,4 @@
-from app.workspace.reference_index import reference_index
+from app.workspace.references import reference_index
 
 
 class ReferenceIndexer:

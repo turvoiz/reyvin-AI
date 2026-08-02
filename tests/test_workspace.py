@@ -78,3 +78,19 @@ def test_impact():
     data = r.json()
 
     assert "affected_symbols" in data
+
+def test_search():
+
+    r = client.get(
+        "/api/v1/workspace/search?q=chat"
+    )
+
+    assert r.status_code == 200
+
+    data = r.json()
+
+    assert len(data) > 0
+
+    assert "symbol" in data[0]
+
+    assert "score" in data[0]
