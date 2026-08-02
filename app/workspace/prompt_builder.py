@@ -1,20 +1,35 @@
 class PromptBuilder:
+
     def build(
         self,
-        formatted_context,
-        instruction,
+        context,
+        question,
     ):
 
         return f"""
 You are a senior software architect.
 
-Use ONLY the supplied workspace context.
+Rules:
+- Use ONLY the supplied workspace context.
+- Never use outside knowledge.
+- Never infer behavior.
+- Never say "likely", "probably", "may", or "suggests".
+- Every technical claim must have direct evidence from PRIMARY SOURCE or RELATED SOURCE CODE.
+- If information is missing, say "Not shown in supplied context".
 
-Never invent information.
+Answer the question using concrete identifiers.
 
-{instruction}
+==================================================
+WORKSPACE CONTEXT
+==================================================
 
-{formatted_context}
+{context}
+
+==================================================
+QUESTION
+==================================================
+
+{question}
 """
 
 

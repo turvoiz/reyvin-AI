@@ -4,7 +4,14 @@ from difflib import SequenceMatcher
 class SymbolMatcher:
     def match(self, symbols, question):
 
-        q = question.lower()
+        q = question.lower().strip()
+
+        # Qualified symbol (e.g. AIService.chat) must match exactly.
+        if "." in q:
+            for name, symbol in symbols.items():
+                if name.lower() == q:
+                    return name, symbol
+            return None
 
         ranked = []
 

@@ -7,6 +7,7 @@ class ContextAssembler:
         self,
         cache,
         symbol,
+        intent="explain",
     ):
 
         context = workspace_retriever.retrieve(
@@ -17,6 +18,29 @@ class ContextAssembler:
         context["top_symbols"] = workspace_ranker.top(
             context,
         )
+
+        context["intent"] = intent
+
+        if intent == "review":
+            context["related_sources"] = [
+                x for x in context.get("related_sources", [])
+                if x["symbol"] in [
+                    c["caller"]
+                    for c in context.get("callers", [])
+                ]
+            ]
+
+        elif intent == "impact":
+            context["related_sources"] = [
+                x for x in context.get("related_sources", [])
+                if x["symbol"] in [
+                    i["symbol"]
+                    for i in context.get("impact", {}).get(
+                        "affected_symbols",
+                        []
+                    )
+                ]
+            ]
 
         return context
 

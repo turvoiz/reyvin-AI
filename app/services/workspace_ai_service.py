@@ -2,7 +2,7 @@ import json
 
 from app.services.ai_service import ai_service
 from app.workspace.cache import workspace_cache
-from app.workspace.context.context_assembler import context_assembler
+from app.workspace.retriever.workspace_retriever import workspace_retriever
 from app.workspace.context.context_compressor import context_compressor
 from app.workspace.context.context_formatter import context_formatter
 from app.workspace.prompt_builder import prompt_builder
@@ -17,18 +17,23 @@ class WorkspaceAIService:
         thinking,
     ):
 
-        context = context_assembler.build(
+        context = workspace_retriever.retrieve(
             workspace_cache,
             plan["symbols"][0],
         )
 
         compressed = context_compressor.compress(
             context,
+            plan.get("intent", "explain"),
         )
 
         formatted = context_formatter.format(
             compressed,
         )
+
+        print("\n========== FORMATTED CONTEXT ==========")
+        print(formatted)
+        print("======== END FORMATTED CONTEXT ========\n")
 
         prompt = prompt_builder.build(
             formatted,

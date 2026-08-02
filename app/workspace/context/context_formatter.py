@@ -1,8 +1,50 @@
 class ContextFormatter:
+
     def format(
         self,
         context,
     ):
+
+        callees = []
+        callers = []
+
+        for item in context.get("related_sources", []):
+
+            block = f"""==================================================
+SYMBOL
+==================================================
+
+{item["symbol"]}
+
+TYPE:
+{item["type"]}
+
+SOURCE:
+{item["source"]}
+"""
+
+            if any(
+                c["call"] == item["symbol"]
+                for c in context.get("calls", [])
+            ):
+                callees.append(block)
+
+            else:
+                callers.append(block)
+
+        callers = "\n".join(
+            caller["caller"]
+            for caller in context.get("callers", [])
+        )
+
+        calls = "\n".join(
+            call["call"]
+            for call in context.get("calls", [])
+        )
+
+        dependencies = "\n".join(
+            context.get("dependencies", [])
+        )
 
         return f"""
 ==================================================
@@ -12,34 +54,45 @@ PRIMARY SYMBOL
 {context["symbol"]["name"]}
 
 ==================================================
-TOP SYMBOLS
-==================================================
-
-{chr(10).join(context["top_symbols"])}
-
-==================================================
 CALLERS
 ==================================================
 
-{chr(10).join(caller["caller"] for caller in context["callers"])}
+{callers}
 
 ==================================================
 CALLEES
 ==================================================
 
-{chr(10).join(call["call"] for call in context["calls"])}
+{calls}
 
 ==================================================
 DEPENDENCIES
 ==================================================
 
-{chr(10).join(context["dependencies"])}
+{dependencies}
 
 ==================================================
 SOURCE
 ==================================================
 
 {context["source"]}
+
+==================================================
+RELATED SOURCE CODE (USE THIS AS EVIDENCE)
+==================================================
+
+==================================================
+CALLEE SOURCE CODE (PRIMARY EVIDENCE)
+==================================================
+
+{''.join(callees)}
+
+==================================================
+OTHER RELATED SOURCE CODE
+==================================================
+
+{''.join(callers)}
+
 """
 
 

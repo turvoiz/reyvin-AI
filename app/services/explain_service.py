@@ -17,6 +17,16 @@ class ExplainService:
             f"Explain {symbol}",
         )
 
+        print("\n===== PLAN =====")
+        print(plan)
+        print("================\n")
+
+        if not plan["symbols"]:
+            return {
+                "symbol": symbol,
+                "error": "Symbol not found",
+            }
+
         answer = workspace_ai_service.run(
             plan=plan,
             question=f"Explain {symbol}",

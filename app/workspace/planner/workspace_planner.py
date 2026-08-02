@@ -13,7 +13,7 @@ class WorkspacePlanner:
 
     def detect_intent(self, question):
 
-        q = question.lower()
+        q = question.strip().splitlines()[0].lower()
 
         for intent, keywords in self.INTENTS.items():
             if any(k in q for k in keywords):
@@ -27,9 +27,21 @@ class WorkspacePlanner:
         question,
     ):
 
+        query = question.strip().splitlines()[0]
+
+        q = query.lower()
+
+        for keywords in self.INTENTS.values():
+            for keyword in keywords:
+                if q.startswith(keyword):
+                    query = query[len(keyword):]
+                    break
+
+        query = query.strip(" :.-\t")
+
         match = symbol_matcher.match(
             cache.symbols(),
-            question,
+            query,
         )
 
         symbols = []

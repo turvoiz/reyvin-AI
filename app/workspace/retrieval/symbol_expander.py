@@ -1,30 +1,54 @@
+from collections import deque
+
+
 class SymbolExpander:
+
     def expand(
         self,
         cache,
         symbol,
+        depth=2,
+        limit=20,
     ):
 
-        knowledge = cache.knowledge(symbol)
+        seen = {symbol}
+        result = []
+        queue = deque([(symbol, 0)])
 
-        related = []
+        while queue and len(result) < limit:
 
-        for call in knowledge.get("calls", []):
-            related.append(call["call"])
+            current, level = queue.popleft()
 
-        for caller in knowledge.get("callers", []):
-            related.append(caller["caller"])
+            result.append(current)
 
-        seen = set()
+            if level >= depth:
+                continue
 
-        ordered = []
+            knowledge = cache.knowledge(current)
 
-        for item in [symbol] + related:
-            if item not in seen:
-                seen.add(item)
-                ordered.append(item)
+            if not knowledge:
+                continue
 
-        return ordered
+            neighbors = []
+
+            for call in knowledge.get("calls", []):
+                neighbors.append(call["call"])
+
+            for caller in knowledge.get("callers", []):
+                neighbors.append(caller["caller"])
+
+            for neighbor in neighbors:
+
+                if neighbor in seen:
+                    continue
+
+                if not cache.get(neighbor):
+                    continue
+
+                seen.add(neighbor)
+                queue.append((neighbor, level + 1))
+
+        return result
 
 
 symbol_expander = SymbolExpander()
