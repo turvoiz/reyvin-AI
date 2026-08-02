@@ -3,6 +3,8 @@ from fastapi import APIRouter
 from app.workspace.cache import workspace_cache
 from app.workspace.indexer import indexer
 from app.services.workspace_service import workspace_service
+from app.services.explain_service import explain_service
+from app.services.review_service import review_service
 from app.schemas.workspace import *
 
 router = APIRouter(
@@ -111,4 +113,30 @@ def trace(symbol: str):
     return trace_engine.trace(
         workspace_cache.calls(),
         symbol,
+    )
+
+
+@router.get("/explain/{symbol}")
+def explain(
+    symbol: str,
+    model: str = "qwen",
+    thinking: bool = False,
+):
+    return explain_service.explain(
+        symbol,
+        model,
+        thinking,
+    )
+
+
+@router.get("/review/{symbol}")
+def review(
+    symbol: str,
+    model: str = "qwen",
+    thinking: bool = False,
+):
+    return review_service.review(
+        symbol,
+        model,
+        thinking,
     )
