@@ -151,6 +151,7 @@ def apply_fix(
             request.project,
             request.model,
             request.thinking,
+            request.error,
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

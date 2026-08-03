@@ -428,7 +428,7 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 const applied = await withProgress("Reyvin: applying fix...", () =>
-                    client.applyFix(choice.fix),
+                    client.applyFix(choice.fix, error.text),
                 );
 
                 showResult("fix", "Reyvin: Apply Fix", applied);

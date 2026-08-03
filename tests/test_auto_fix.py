@@ -381,3 +381,224 @@ def test_fix_service_rejects_non_git_workspace(tmp_path):
         raised = True
 
     assert raised
+
+
+NOOP_DIFF = (
+    "```diff\n"
+    "--- a/greeter.ts\n"
+    "+++ b/greeter.ts\n"
+    "@@ -1,3 +1,3 @@\n"
+    " export function greet(name: string) {\n"
+    "-  return name.toUpperCase()\n"
+    "+  return name.toUpperCase()\n"
+    " }\n"
+    "```"
+)
+
+
+def test_fix_service_rejects_noop_diff(tmp_path, monkeypatch):
+
+    project_id = "fix-noop"
+    original = _init_git_repo(tmp_path)
+
+    client.post(
+        "/api/v1/analyze",
+        json={"project_id": project_id, "workspace": str(tmp_path)},
+    )
+
+    monkeypatch.setattr(
+        ai_module.ai_service,
+        "chat",
+        lambda model, message, thinking: {
+            "response": NOOP_DIFF,
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        },
+    )
+
+    result = fix_service.apply(
+        {
+            "description": "make no real change",
+            "file": "greeter.ts",
+            "symbol": "greet",
+            "suggestion": "no change",
+        },
+        project=project_id,
+        model="qwen",
+        thinking=False,
+        error="TypeError: name.toUpperCase is not a function",
+    )
+
+    assert result["applied"] is False
+
+    assert "no-op" in result["message"]
+
+    assert result["checkpoint_commit"]
+
+    assert (tmp_path / "greeter.ts").read_text() == original
+
+    _, log, _ = _git(tmp_path, "log", "--oneline", "-1")
+
+    assert "apply fix" not in log
+
+
+def test_fix_service_forwards_reported_error_into_fix_prompt(tmp_path, monkeypatch):
+
+    project_id = "fix-error"
+    _init_git_repo(tmp_path)
+
+    client.post(
+        "/api/v1/analyze",
+        json={"project_id": project_id, "workspace": str(tmp_path)},
+    )
+
+    captured = {}
+
+    def fake_chat(model, message, thinking):
+        captured["message"] = message
+
+        return {
+            "response": GREETER_DIFF,
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    reported = "TypeError: name.toUpperCase is not a function"
+
+    fix_service.apply(
+        {
+            "description": "guard the input type",
+            "file": "greeter.ts",
+            "symbol": "greet",
+            "suggestion": "wrap in String()",
+        },
+        project=project_id,
+        model="qwen",
+        thinking=False,
+        error=reported,
+    )
+
+    assert "REPORTED ERROR" in captured["message"]
+
+    assert reported in captured["message"]
+
+
+def test_fix_service_verification_blocks_unrelated_change(tmp_path, monkeypatch):
+
+    project_id = "fix-verify"
+    original = _init_git_repo(tmp_path)
+
+    client.post(
+        "/api/v1/analyze",
+        json={"project_id": project_id, "workspace": str(tmp_path)},
+    )
+
+    calls = {"count": 0}
+
+    def fake_chat(model, message, thinking):
+        calls["count"] += 1
+
+        if calls["count"] == 1:
+            response = GREETER_DIFF
+        else:
+            response = json.dumps(
+                {
+                    "fixed": False,
+                    "confidence": "high",
+                    "reason": "change is unrelated to the error",
+                }
+            )
+
+        return {
+            "response": response,
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    result = fix_service.apply(
+        {
+            "description": "guard the input type",
+            "file": "greeter.ts",
+            "symbol": "greet",
+            "suggestion": "wrap in String()",
+        },
+        project=project_id,
+        model="qwen",
+        thinking=False,
+        error="TypeError: unrelated crash",
+    )
+
+    assert result["applied"] is False
+
+    assert "Verification rejected" in result["message"]
+
+    assert "unrelated to the error" in result["message"]
+
+    assert (tmp_path / "greeter.ts").read_text() == original
+
+
+def test_diagnose_warns_on_stack_mismatch(tmp_path, monkeypatch):
+
+    (tmp_path / "greeter.ts").write_text(
+        "export function greet(name: string) {\n"
+        "  return name.toUpperCase()\n"
+        "}\n"
+    )
+
+    from app.workspace.cache import WorkspaceCache
+
+    cache = WorkspaceCache()
+
+    cache.load(str(tmp_path))
+
+    captured = {}
+
+    def fake_chat(model, message, thinking):
+        captured["message"] = message
+
+        return {
+            "response": json.dumps(
+                {
+                    "root_cause": "outdated billing library",
+                    "location": "package.json",
+                    "explanation": "bump version",
+                    "fixes": [
+                        {
+                            "description": "bump version",
+                            "file": "package.json",
+                            "symbol": "",
+                            "suggestion": "update version",
+                        },
+                    ],
+                }
+            ),
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    web_search_service._search_func = lambda query, limit: []
+
+    try:
+        result = diagnose_service.diagnose(
+            "App must use Google Play Billing Library version 8.0.0 or later",
+            file="",
+            model="qwen",
+            thinking=False,
+            cache=cache,
+        )
+    finally:
+        web_search_service._search_func = None
+
+    assert "STACK MISMATCH WARNING" in captured["message"]
+
+    assert result["diagnosis"]["fixes"] == []

@@ -1,5 +1,6 @@
 import json
 import re
+from pathlib import Path
 
 from app.services.ai_service import ai_service
 from app.services.web_search_service import web_search_service
@@ -25,6 +26,19 @@ class DiagnoseService:
     )
     PATH_LINE = re.compile(
         r"([\w./\\-]+\.(?:py|ts|tsx|js|jsx)):(\d+)"
+    )
+    MOBILE_ERROR_PATTERN = re.compile(
+        r"(play billing|billing library|google play|play console|compilesdk|"
+        r"targetsdk|react[- ]native|expo|flutter|xcode|app store|"
+        r"bundle identifier|\bandroid\b|\bgradle\b|\bios\b|\badb\b)",
+        re.IGNORECASE,
+    )
+    MOBILE_WORKSPACE_HINTS = (
+        "react-native",
+        "react_native",
+        "expo",
+        "purchases",
+        "flutter",
     )
 
     def diagnose(
@@ -75,11 +89,27 @@ class DiagnoseService:
             f"{frame_text}\n\n"
             "If no stack frames matched, trace the root cause using the "
             "WORKSPACE CONTEXT (dependency manifest files and matched source "
-            "evidence). For library, version, or policy errors, locate the "
-            "exact dependency entry or configuration in the manifests, and "
-            "use the WEB EVIDENCE (if supplied) to identify the current "
-            "required version, the upgrade path, and the exact file that "
-            "must change.\n\n"
+            "evidence). For library, version, or policy errors:\n"
+            "- Locate the exact dependency entry or configuration in the "
+            "manifests (package.json, pyproject.toml, build.gradle, ...) that "
+            "the error refers to.\n"
+            "- Store-library errors (Google Play Billing Library, StoreKit, "
+            "App Store IAP, ...) are usually caused by a subscription/IAP SDK "
+            "that BUNDLES the store library transitively. When the error says "
+            "to update a third-party SDK, search the workspace for that SDK "
+            "(for example react-native-purchases / RevenueCat in "
+            "package.json) and fix by UPGRADING THE SDK version, never by "
+            "hand-adding the bundled library to a gradle file.\n"
+            "- The fix MUST name a file that exists in this workspace AND that "
+            "declares the dependency or configuration the error mentions. "
+            "Never invent files, dependencies, or versions.\n"
+            "- NEVER suggest adding a dependency or library that is not "
+            "already present in the workspace.\n"
+            "- A version bump is only valid if the error names that library, "
+            "the workspace actually declares it, and the WEB EVIDENCE (if "
+            "supplied) supports the target version and upgrade path.\n"
+            "- If the workspace does not contain the technology the error "
+            "refers to, return fixes: [] and state the mismatch in root_cause.\n\n"
             "Respond with ONLY valid JSON, no surrounding text:\n"
             "{\n"
             '  "root_cause": "one sentence root cause",\n'
@@ -98,6 +128,22 @@ class DiagnoseService:
                 for item in web_evidence
             ]
             question += "\n\nWEB EVIDENCE (from internet search):\n" + "\n".join(lines)
+
+        mismatch = self._stack_mismatch(cache, error)
+
+        if mismatch:
+            question += (
+                "\n\nSTACK MISMATCH WARNING:\n"
+                "The reported error refers to an Android/iOS/mobile "
+                "technology (for example Google Play Billing), but this "
+                "workspace does not appear to contain a mobile project (no "
+                "android/, ios/, or react-native/expo dependency). The error "
+                "probably belongs to a different repository.\n"
+                "Do not invent a fix here. Set file and symbol to \"\" and "
+                "return fixes: [] unless you can point to an existing file in "
+                "this workspace that is genuinely responsible for the "
+                "reported error."
+            )
 
         prompt = prompt_builder.build(
             formatted,
@@ -119,6 +165,19 @@ class DiagnoseService:
             matched,
         )
 
+        if isinstance(diagnosis, dict):
+            diagnosis["fixes"] = self._prune_fixes(
+                cache,
+                diagnosis.get("fixes") or [],
+            )
+
+            if mismatch and not diagnosis.get("fixes"):
+                diagnosis["explanation"] = (
+                    "The reported error appears to belong to a different "
+                    "project than this workspace. No valid fix location was "
+                    "found, so no fix was suggested."
+                )
+
         return {
             "frames": matched,
             "diagnosis": diagnosis,
@@ -133,6 +192,73 @@ class DiagnoseService:
         query = web_search_service.build_query(error)
 
         return web_search_service.search(query)
+
+    def _stack_mismatch(self, cache, error):
+        if not self._error_hints_mobile(error):
+            return False
+
+        return not self._workspace_has_mobile_stack(cache)
+
+    def _error_hints_mobile(self, error):
+        return bool(self.MOBILE_ERROR_PATTERN.search(error or ""))
+
+    def _workspace_has_mobile_stack(self, cache):
+        root = Path(cache.workspace)
+
+        if (root / "android").is_dir():
+            return True
+
+        if (root / "ios").is_dir():
+            return True
+
+        if (root / "pubspec.yaml").is_file():
+            return True
+
+        package = root / "package.json"
+
+        if package.is_file():
+            try:
+                text = package.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                return False
+
+            lowered = text.lower()
+
+            if any(hint in lowered for hint in self.MOBILE_WORKSPACE_HINTS):
+                return True
+
+        return False
+
+    def _prune_fixes(self, cache, fixes):
+        root = Path(cache.workspace).resolve()
+
+        kept = []
+
+        for fix in fixes:
+            if not isinstance(fix, dict):
+                continue
+
+            file_name = str(fix.get("file") or "").strip()
+
+            if not file_name:
+                kept.append(fix)
+                continue
+
+            raw = Path(file_name.replace("\\", "/"))
+
+            if raw.is_absolute():
+                continue
+
+            try:
+                candidate = (root / raw).resolve()
+                candidate.relative_to(root)
+            except (OSError, ValueError):
+                continue
+
+            if candidate.is_file():
+                kept.append(fix)
+
+        return kept
 
     def _extract_frames(
         self,

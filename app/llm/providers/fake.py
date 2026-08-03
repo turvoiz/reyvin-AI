@@ -66,6 +66,18 @@ class FakeProvider(ChatProvider):
                 "elapsed_ms": 1,
             }
 
+        if '"fixed"' in message:
+            return {
+                "response": json.dumps(
+                    {
+                        "fixed": True,
+                        "confidence": "high",
+                        "reason": "fake verification",
+                    }
+                ),
+                "elapsed_ms": 1,
+            }
+
         return {
             "response": "FAKE RESPONSE",
             "elapsed_ms": 1,

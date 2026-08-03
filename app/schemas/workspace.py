@@ -47,6 +47,7 @@ class WorkspaceDiagnoseRequest(BaseModel):
 
 class WorkspaceApplyFixRequest(BaseModel):
     fix: dict
+    error: str = ""
     project: str = "default"
     model: str = "qwen"
     thinking: bool = False

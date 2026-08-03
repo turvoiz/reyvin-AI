@@ -1,3 +1,4 @@
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -9,13 +10,18 @@ from app.workspace.prompt_builder import prompt_builder
 
 DIFF_BLOCK = re.compile(r"```(?:diff)?\s*(.*?)```", re.DOTALL)
 CODE_BLOCK = re.compile(r"```(?:[a-zA-Z]*)\s*(.*?)```", re.DOTALL)
+DIFF_MARKER = re.compile(
+    r"(?:^---\s+a/)|(?:^\+\+\+\s+b/)|(?:^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s*@@)",
+    re.MULTILINE,
+)
+JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
 
 
 class FixService:
     def __init__(self):
         self._checkpoints = {}
 
-    def apply(self, fix, project="default", model="qwen", thinking=False):
+    def apply(self, fix, project="default", model="qwen", thinking=False, error=""):
         cache = workspace_registry.get(project)
         workspace = Path(cache.workspace)
 
@@ -37,34 +43,65 @@ class FixService:
 
         self._ignore_snapshot(workspace)
 
-        evidence = self._web_evidence(fix)
+        evidence = self._web_evidence(fix, error)
 
-        diff = self._generate_diff(relative, source, fix, evidence, model, thinking)
+        diff = self._generate_diff(
+            relative, source, fix, evidence, model, thinking, error
+        )
 
         applied_diff, method = self._apply_diff(workspace, diff)
 
         if not applied_diff:
             new_content = self._generate_content(
-                relative, source, fix, evidence, model, thinking
+                relative, source, fix, evidence, model, thinking, error
             )
             if not new_content:
-                return {
-                    "applied": False,
-                    "file": relative,
-                    "message": (
-                        "Could not produce an applicable patch. "
-                        "Manual review required."
-                    ),
-                    "raw_diff": diff,
-                    "checkpoint_commit": checkpoint,
-                    "revert": f"git reset --hard {checkpoint}",
-                }
+                return self._failed(
+                    relative,
+                    diff,
+                    checkpoint,
+                    error,
+                    "Could not produce an applicable patch. "
+                    "Manual review required.",
+                )
             self._write_file(workspace, relative, new_content)
             method = "rewrite"
 
+        after = self._read_file(workspace, relative)
+
+        if after == source:
+            self._reset_to(workspace, checkpoint)
+            return self._failed(
+                relative,
+                diff,
+                checkpoint,
+                error,
+                "The generated change was a no-op: the target file is "
+                "identical before and after. This usually means the AI did "
+                "not understand the error or edited the wrong file. No "
+                "commit was created.",
+            )
+
+        working_diff = self._git(workspace, "diff")[1]
+
+        verification = self._verify(
+            relative, working_diff, error, evidence, fix, model, thinking
+        )
+
+        if isinstance(verification, dict) and verification.get("fixed") is False:
+            reason = verification.get("reason") or "no reason given"
+            self._reset_to(workspace, checkpoint)
+            return self._failed(
+                relative,
+                diff,
+                checkpoint,
+                error,
+                f"Verification rejected the change: {reason}",
+            )
+
         cache.reload()
 
-        actual_diff = self._git(workspace, "diff")[1]
+        actual_diff = working_diff or self._git(workspace, "diff")[1]
 
         fix_commit = self._commit_fix(workspace, fix)
 
@@ -78,7 +115,12 @@ class FixService:
             "checkpoint_commit": checkpoint,
             "fix_commit": fix_commit,
             "revert": f"git reset --hard {checkpoint}",
-            "message": "Fix applied and committed.",
+            "message": (
+                "Fix applied and committed."
+                if fix_commit
+                else "Fix applied, but no commit was created."
+            ),
+            "verification": verification or {},
         }
 
     def revert(self, project="default"):
@@ -101,6 +143,20 @@ class FixService:
             "checkpoint": checkpoint,
             "message": f"Workspace reset to {checkpoint}.",
         }
+
+    def _failed(self, relative, diff, checkpoint, error, message):
+        return {
+            "applied": False,
+            "file": relative,
+            "message": message,
+            "raw_diff": diff,
+            "checkpoint_commit": checkpoint,
+            "revert": f"git reset --hard {checkpoint}",
+            "error": (error or "")[:2000],
+        }
+
+    def _reset_to(self, workspace, checkpoint):
+        self._git(workspace, "reset", "--hard", checkpoint)
 
     def _resolve_target(self, cache, workspace, fix):
         file_name = fix.get("file") or ""
@@ -148,11 +204,14 @@ class FixService:
         except OSError:
             return ""
 
-    def _web_evidence(self, fix):
+    def _web_evidence(self, fix, error=""):
         text = " ".join(
             str(fix.get(key) or "")
             for key in ("description", "suggestion", "error")
         )
+
+        if error:
+            text += " " + error
 
         if not web_search_service.needs_search(text):
             return []
@@ -161,17 +220,20 @@ class FixService:
 
         return web_search_service.search(query)
 
-    def _generate_diff(self, relative, source, fix, evidence, model, thinking):
-        context = self._context_block(relative, source, fix, evidence)
+    def _generate_diff(self, relative, source, fix, evidence, model, thinking, error):
+        context = self._context_block(relative, source, fix, evidence, error)
 
         question = (
-            "Produce a unified diff that implements the suggested fix.\n\n"
+            "Produce a unified diff that implements the suggested fix for the "
+            "reported error.\n\n"
             "Rules:\n"
             "- Output ONLY the unified diff between ```diff and ``` markers.\n"
             "- The diff must apply with `git apply`.\n"
             "- Use a/ and b/ paths relative to the repository root, matching "
             "the FILE path exactly.\n"
             "- Make the smallest possible change. Do not reformat unrelated code.\n"
+            "- The change MUST be a real change: never output a hunk whose "
+            "removed and added lines are identical.\n"
             "- No surrounding commentary."
         )
 
@@ -181,14 +243,15 @@ class FixService:
 
         return self._extract_block(result["response"], "diff")
 
-    def _generate_content(self, relative, source, fix, evidence, model, thinking):
-        context = self._context_block(relative, source, fix, evidence)
+    def _generate_content(self, relative, source, fix, evidence, model, thinking, error):
+        context = self._context_block(relative, source, fix, evidence, error)
 
         question = (
             "Output ONLY the complete new content of this file that implements "
             "the suggested fix, between ``` and ``` markers.\n\n"
             "Rules:\n"
             "- Preserve every line that is not part of the fix, byte for byte.\n"
+            "- Output the file content itself, never a diff.\n"
             "- No commentary outside the code block."
         )
 
@@ -196,9 +259,92 @@ class FixService:
 
         result = ai_service.chat(model=model, message=prompt, thinking=thinking)
 
-        return self._extract_block(result["response"], "code")
+        content = self._extract_block(result["response"], "code")
 
-    def _context_block(self, relative, source, fix, evidence):
+        if DIFF_MARKER.search(content):
+            return ""
+
+        return content
+
+    def _verify(self, relative, change, error, evidence, fix, model, thinking):
+        if not error:
+            return None
+
+        context = (
+            "REPORTED ERROR:\n"
+            f"{error[:4000]}\n\n"
+            "TARGET FILE:\n"
+            f"{relative}\n\n"
+            "CHANGE (git diff):\n"
+            f"{(change or '(no textual change)')[:8000]}\n\n"
+            "FIX REQUESTED:\n"
+            f"description: {fix.get('description') or ''}\n"
+            f"suggestion: {fix.get('suggestion') or ''}"
+        )
+
+        question = (
+            "A code change was generated to fix a reported error. Decide "
+            "whether the change directly and sufficiently addresses the error.\n\n"
+            "Rules:\n"
+            '- "fixed": true only if the change directly addresses the reported error.\n'
+            '- "fixed": false if the change is unrelated, a no-op, edits the '
+            "wrong file, or is clearly insufficient.\n"
+            '- If you cannot determine a direct causal link, return "fixed": false.\n\n'
+            "Respond with ONLY valid JSON, no surrounding text:\n"
+            '{"fixed": true or false, "confidence": "high|medium|low", '
+            '"reason": "one sentence explanation"}'
+        )
+
+        prompt = prompt_builder.build(context, question, external=bool(evidence))
+
+        result = ai_service.chat(model=model, message=prompt, thinking=thinking)
+
+        return self._parse_verdict(result["response"])
+
+    def _parse_verdict(self, response):
+        if not response:
+            return None
+
+        text = re.sub(r"```(?:json)?\s*", "", response.strip())
+
+        obj = None
+
+        try:
+            parsed = json.loads(text)
+
+            if isinstance(parsed, dict):
+                obj = parsed
+        except json.JSONDecodeError:
+            pass
+
+        if not isinstance(obj, dict):
+            decoder = json.JSONDecoder()
+
+            for match in JSON_OBJECT.finditer(text):
+                try:
+                    candidate, _ = decoder.raw_decode(
+                        text[match.start():]
+                    )
+                except json.JSONDecodeError:
+                    continue
+
+                if isinstance(candidate, dict) and "fixed" in candidate:
+                    obj = candidate
+                    break
+
+        if not isinstance(obj, dict):
+            return None
+
+        if "fixed" not in obj:
+            return None
+
+        return {
+            "fixed": bool(obj.get("fixed")),
+            "confidence": str(obj.get("confidence") or "unknown"),
+            "reason": str(obj.get("reason") or ""),
+        }
+
+    def _context_block(self, relative, source, fix, evidence, error=""):
         lines = [
             "You are applying a fix to a source file.",
             "",
@@ -212,6 +358,11 @@ class FixService:
             f"description: {fix.get('description') or ''}",
             f"suggestion: {fix.get('suggestion') or ''}",
         ]
+
+        if error:
+            lines.append("")
+            lines.append("REPORTED ERROR:")
+            lines.append(error[:4000])
 
         if evidence:
             lines.append("")

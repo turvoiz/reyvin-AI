@@ -478,6 +478,12 @@ function renderFix(title: string, data: unknown): string {
         ? section("Message", renderAnswer(record.message))
         : "";
 
+    const verification = asRecord(record.verification);
+    const verificationReason = toText(verification.reason);
+    const verificationBlock = verificationReason
+        ? section("Verification", renderAnswer(verificationReason))
+        : "";
+
     const commits = [];
     if (toText(record.checkpoint_commit)) {
         commits.push({ label: "Checkpoint", hash: toText(record.checkpoint_commit) });
@@ -504,6 +510,7 @@ function renderFix(title: string, data: unknown): string {
 <h1 class="title">Auto-Fix ${status}</h1>
 ${file}
 ${messageBlock}
+${verificationBlock}
 ${commitBlock}
 ${revertBlock}
 ${diffBlock}

@@ -103,9 +103,10 @@ export function createClient(config: ApiConfig) {
                 model: config.model ?? "qwen",
                 thinking: config.thinking ?? false,
             }),
-        applyFix: (fix: unknown) =>
+        applyFix: (fix: unknown, error = "") =>
             post(`/apply-fix${llmQuery(config)}`, {
                 fix,
+                error,
                 model: config.model ?? "qwen",
                 thinking: config.thinking ?? false,
             }),
