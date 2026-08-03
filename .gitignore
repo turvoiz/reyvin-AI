@@ -18,6 +18,11 @@ database/
 # VSCode
 .vscode/
 
+# VS Code extension build output
+vscode-extension/node_modules/
+vscode-extension/out/
+vscode-extension/*.vsix
+
 # Build
 dist/
 build/
@@ -30,3 +35,4 @@ build/
 
 # Linux
 *.swp
+.workspace_snapshot.json

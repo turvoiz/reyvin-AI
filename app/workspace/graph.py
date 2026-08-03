@@ -1,11 +1,10 @@
 from pathlib import Path
 
-from app.workspace.constants import IGNORE_DIRS
-from app.workspace.parser import parse_python_file
+from app.workspace.languages import iter_source_files
+from app.workspace.parser import parse_source_file
 
 
 class DependencyGraph:
-
     def build(self, workspace: str):
 
         root = Path(workspace)
@@ -13,19 +12,15 @@ class DependencyGraph:
         graph = {}
         reverse = {}
 
-        for file in root.rglob("*.py"):
-
-            if any(part in IGNORE_DIRS for part in file.parts):
-                continue
+        for file in iter_source_files(workspace):
 
             relative = str(file.relative_to(root))
 
-            parsed = parse_python_file(str(file))
+            parsed = parse_source_file(str(file))
 
             graph[relative] = parsed["imports"]
 
             for imp in parsed["imports"]:
-
                 reverse.setdefault(imp, []).append(relative)
 
         return {

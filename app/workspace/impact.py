@@ -1,5 +1,4 @@
 class ImpactAnalyzer:
-
     def _walk(self, reverse_graph, symbol, visited):
 
         if symbol in visited:
@@ -8,7 +7,6 @@ class ImpactAnalyzer:
         visited.add(symbol)
 
         for caller in reverse_graph.get(symbol, []):
-
             self._walk(
                 reverse_graph,
                 caller["caller"],

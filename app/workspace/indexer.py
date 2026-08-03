@@ -3,7 +3,6 @@ from app.workspace.symbols import build_symbol_index
 
 
 class WorkspaceIndexer:
-
     def index(self, workspace: str):
 
         files = scan_workspace(workspace)

@@ -2,20 +2,19 @@ import time
 
 from ollama import Client
 
-from app.core.settings import settings
 from app.core.models import (
-    MODELS,
-    DEFAULT_MODEL,
-    KEEP_ALIVE,
     DEFAULT_CTX,
+    DEFAULT_MODEL,
     DEFAULT_TEMPERATURE,
+    KEEP_ALIVE,
+    MODELS,
 )
+from app.core.settings import settings
 
 client = Client(host=settings.OLLAMA_HOST)
 
 
 class OllamaProvider:
-
     def chat(
         self,
         model: str,

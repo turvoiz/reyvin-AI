@@ -1,5 +1,4 @@
 class TraceEngine:
-
     def trace(self, graph, start, visited=None):
 
         if visited is None:
@@ -13,7 +12,6 @@ class TraceEngine:
         result = {}
 
         for call in graph.get(start, []):
-
             target = call["call"]
 
             result[target] = self.trace(

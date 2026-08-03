@@ -2,7 +2,6 @@ from app.workspace.cache import workspace_cache
 
 
 class ImpactService:
-
     def analyze(self, symbol: str):
 
         calls = workspace_cache.calls()

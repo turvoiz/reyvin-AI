@@ -1,14 +1,13 @@
 import ast
 from pathlib import Path
 
-from app.workspace.constants import IGNORE_DIRS, IGNORE_CALLS
+from app.workspace.constants import IGNORE_CALLS, IGNORE_DIRS
+from app.workspace.js_call_graph import js_call_graph
 from app.workspace.resolver import resolver_index
-from app.workspace.symbols import build_symbol_index
 from app.workspace.symbols import build_symbol_index
 
 
 class CallVisitor(ast.NodeVisitor):
-
     def __init__(self, file, resolver, symbols):
 
         self.file = file
@@ -31,17 +30,14 @@ class CallVisitor(ast.NodeVisitor):
 
         self.current = previous
 
-
     def visit_FunctionDef(self, node):
 
         previous = self.current
 
         if previous:
-
             self.current = f"{previous}.{node.name}"
 
         else:
-
             self.current = node.name
 
         self.generic_visit(node)
@@ -51,71 +47,60 @@ class CallVisitor(ast.NodeVisitor):
     def visit_Call(self, node):
 
         if self.current:
-
             target = None
 
             if isinstance(node.func, ast.Attribute):
-
                 if isinstance(node.func.value, ast.Name):
-
                     instance = node.func.value.id
 
                     if instance == "self" and "." in self.current:
-
                         cls = self.current.split(".")[0]
 
                         target = f"{cls}.{node.func.attr}"
 
                     elif instance in self.resolver:
-
                         cls = self.resolver[instance]["class"]
 
                         target = f"{cls}.{node.func.attr}"
 
                     else:
-
                         target = None
 
                 else:
-
                     target = None
 
             elif isinstance(node.func, ast.Name):
-
                 target = node.func.id
 
-            if (
-                target
-                and target not in IGNORE_CALLS
-                and (
-                    target in self.symbols
+            if target and target not in IGNORE_CALLS and (target in self.symbols):
+                self.calls.setdefault(self.current, []).append(
+                    {
+                        "call": target,
+                        "file": self.file,
+                        "line": node.lineno,
+                    }
                 )
-            ):
-
-                self.calls.setdefault(self.current, []).append({
-                    "call": target,
-                    "file": self.file,
-                    "line": node.lineno,
-                })
 
         self.generic_visit(node)
 
 
 class CallGraph:
-
-    def build(self, workspace):
+    def build(
+        self,
+        workspace,
+        symbols=None,
+        resolver=None,
+    ):
 
         root = Path(workspace)
 
         graph = {}
         reverse = {}
 
-        resolver = resolver_index.build(workspace)
-
-        symbols = build_symbol_index(workspace)
+        resolver = resolver if resolver is not None else resolver_index.build(workspace)
+        symbols = symbols if symbols is not None else build_symbol_index(workspace)
 
         for file in root.rglob("*.py"):
-
             if any(part in IGNORE_DIRS for part in file.parts):
                 continue
 
@@ -132,17 +117,25 @@ class CallGraph:
             graph.update(visitor.calls)
 
         for caller, callees in graph.items():
-
             for call in callees:
+                reverse.setdefault(call["call"], []).append(
+                    {
+                        "caller": caller,
+                        "file": call["file"],
+                        "line": call["line"],
+                    }
+                )
 
-                reverse.setdefault(
-                    call["call"],
-                    []
-                ).append({
-                    "caller": caller,
-                    "file": call["file"],
-                    "line": call["line"],
-                })
+        javascript = js_call_graph.build(
+            workspace,
+            symbols,
+        )
+
+        for caller, callees in javascript["forward"].items():
+            graph.setdefault(caller, []).extend(callees)
+
+        for callee, callers in javascript["reverse"].items():
+            reverse.setdefault(callee, []).extend(callers)
 
         return {
             "forward": graph,
