@@ -1,24 +1,17 @@
 from pathlib import Path
 
-IGNORE = {
-    ".git",
-    ".venv",
-    "__pycache__",
-    ".pytest_cache",
-    ".mypy_cache",
-}
+from app.workspace.languages import iter_source_files
 
 
 class FileState:
     def scan(self, workspace):
 
+        root = Path(workspace)
         result = {}
 
-        for f in Path(workspace).rglob("*.py"):
-            if any(part in IGNORE for part in f.parts):
-                continue
+        for f in iter_source_files(workspace):
 
-            result[str(f)] = f.stat().st_mtime_ns
+            result[str(f.relative_to(root))] = f.stat().st_mtime_ns
 
         return result
 

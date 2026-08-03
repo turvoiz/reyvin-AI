@@ -1,0 +1,471 @@
+import json
+import re
+
+from app.services.ai_service import ai_service
+from app.workspace.cache import workspace_cache
+from app.workspace.context.context_assembler import context_assembler
+from app.workspace.context.context_compressor import context_compressor
+from app.workspace.context.context_formatter import context_formatter
+from app.workspace.prompt_builder import prompt_builder
+from app.workspace.search.error_search import error_search
+from app.workspace.symbol_matcher import symbol_matcher
+
+
+class DiagnoseService:
+
+    JS_PAREN = re.compile(
+        r"at\s+(?:async\s+)?([\w$.<>]+)\s*\(([^):]+):(\d+):\d+\)"
+    )
+    JS_BARE = re.compile(
+        r"at\s+([^:()\s\\/]+):(\d+):\d+"
+    )
+    PY_FRAME = re.compile(
+        r'File\s+"([^"]+)",\s+line\s+(\d+)(?:,\s+in\s+([\w<>]+))?'
+    )
+    PATH_LINE = re.compile(
+        r"([\w./\\-]+\.(?:py|ts|tsx|js|jsx)):(\d+)"
+    )
+
+    def diagnose(
+        self,
+        error,
+        file="",
+        model="qwen",
+        thinking=False,
+        cache=workspace_cache,
+    ):
+
+        frames = self._extract_frames(
+            error,
+            file,
+        )
+
+        matched = self._match_frames(
+            cache,
+            frames,
+        )
+
+        context = self._build_context(
+            cache,
+            matched,
+            error,
+        )
+
+        compressed = context_compressor.compress(
+            context,
+            "diagnose",
+        )
+
+        formatted = context_formatter.format(
+            compressed,
+        )
+
+        frame_text = self._format_frames(
+            matched,
+            frames,
+        )
+
+        question = (
+            "A failure was reported. Diagnose the root cause using only the "
+            "supplied workspace context as evidence.\n\n"
+            "REPORTED ERROR:\n"
+            f"{error}\n\n"
+            "MATCHED STACK FRAMES:\n"
+            f"{frame_text}\n\n"
+            "If no stack frames matched, trace the root cause using the "
+            "WORKSPACE CONTEXT (dependency manifest files and matched source "
+            "evidence). For library, version, or policy errors, locate the "
+            "exact dependency entry or configuration in the manifests.\n\n"
+            "Respond with ONLY valid JSON, no surrounding text:\n"
+            "{\n"
+            '  "root_cause": "one sentence root cause",\n'
+            '  "location": "file:line:symbol (or the closest matched symbol)",\n'
+            '  "explanation": "detailed explanation tied to the code evidence",\n'
+            '  "fixes": [{"description": "what to fix", "file": "", '
+            '"symbol": "", "suggestion": "concrete code-level fix"}]\n'
+            "}"
+        )
+
+        prompt = prompt_builder.build(
+            formatted,
+            question,
+        )
+
+        result = ai_service.chat(
+            model=model,
+            message=prompt,
+            thinking=thinking,
+        )
+
+        response = result["response"]
+
+        diagnosis = self._parse_response(
+            response,
+            error,
+            matched,
+        )
+
+        return {
+            "frames": matched,
+            "diagnosis": diagnosis,
+            "model": result["model"],
+            "elapsed_ms": result["elapsed_ms"],
+        }
+
+    def _extract_frames(
+        self,
+        error,
+        file,
+    ):
+
+        frames = []
+
+        seen = set()
+
+        for match in self.JS_PAREN.finditer(error):
+            self._add_frame(
+                frames,
+                seen,
+                match.group(2),
+                match.group(3),
+                match.group(1),
+            )
+
+        for match in self.PY_FRAME.finditer(error):
+            self._add_frame(
+                frames,
+                seen,
+                match.group(1),
+                match.group(2),
+                match.group(3),
+            )
+
+        for match in self.JS_BARE.finditer(error):
+            self._add_frame(
+                frames,
+                seen,
+                match.group(1),
+                match.group(2),
+                "",
+            )
+
+        for match in self.PATH_LINE.finditer(error):
+            self._add_frame(
+                frames,
+                seen,
+                match.group(1),
+                match.group(2),
+                "",
+            )
+
+        if file and not frames:
+            frames.append(
+                {
+                    "file": file,
+                    "line": 0,
+                    "function": "",
+                }
+            )
+
+        return frames
+
+    def _add_frame(
+        self,
+        frames,
+        seen,
+        file,
+        line,
+        function,
+    ):
+
+        key = (
+            file,
+            line,
+        )
+
+        if key in seen:
+            return
+
+        seen.add(key)
+
+        frames.append(
+            {
+                "file": file,
+                "line": int(line),
+                "function": function,
+            }
+        )
+
+    def _match_frames(
+        self,
+        cache,
+        frames,
+    ):
+
+        symbols = cache.symbols()
+
+        matched = []
+
+        seen = set()
+
+        for frame in frames:
+
+            name = frame["function"]
+
+            symbol = None
+
+            if name:
+                symbol = self._match_name(
+                    symbols,
+                    name,
+                )
+
+            if not symbol:
+                symbol = self._match_file(
+                    symbols,
+                    frame["file"],
+                )
+
+            symbol_key = symbol or ""
+
+            if symbol_key in seen:
+                continue
+
+            seen.add(symbol_key)
+
+            matched.append(
+                {
+                    "file": frame["file"],
+                    "line": frame["line"],
+                    "function": frame["function"],
+                    "symbol": symbol,
+                }
+            )
+
+        return matched
+
+    def _match_name(
+        self,
+        symbols,
+        name,
+    ):
+
+        if name in symbols:
+            return name
+
+        if name.endswith(">") and "<" in name:
+            name = name[name.index("<") + 1:name.index(">")]
+
+        result = symbol_matcher.match(
+            symbols,
+            name,
+        )
+
+        if result:
+            return result[0]
+
+        return None
+
+    def _match_file(
+        self,
+        symbols,
+        file,
+    ):
+
+        normalized = self._relative(file)
+
+        candidates = [
+            symbol
+            for symbol, info in symbols.items()
+            if info.get("file") == file
+            or info.get("file") == normalized
+            or info.get("file", "").endswith("/" + normalized)
+            or normalized.endswith("/" + info.get("file", ""))
+        ]
+
+        if not candidates:
+            return None
+
+        candidates.sort(
+            key=lambda symbol: (
+                symbols[symbol].get("start_line", 0),
+                symbol,
+            ),
+        )
+
+        return candidates[0]
+
+    def _relative(
+        self,
+        path,
+    ):
+
+        normalized = path.replace("\\", "/")
+
+        parts = normalized.split("/")
+
+        for index in range(len(parts) - 1):
+            candidate = "/".join(parts[index + 1:])
+            if candidate.endswith(
+                ("ts", "tsx", "js", "jsx", "py")
+            ):
+                return candidate
+
+        return normalized
+
+    def _build_context(
+        self,
+        cache,
+        matched,
+        error,
+    ):
+
+        primary = matched[0]["symbol"] if matched else None
+
+        if primary:
+
+            context = context_assembler.build(
+                cache,
+                primary,
+                "review",
+            )
+
+            return context
+
+        evidence = error_search.search(
+            cache,
+            error,
+        )
+
+        related_sources = [
+            {
+                "symbol": item["file"],
+                "type": item["kind"],
+                "source": item["snippet"],
+            }
+            for item in evidence
+        ]
+
+        return {
+            "symbol": {
+                "name": "REPORTED ERROR",
+                "type": "error",
+            },
+            "source": error[:1200],
+            "calls": [],
+            "callers": [],
+            "dependencies": [
+                item["file"]
+                for item in evidence
+            ],
+            "impact": {},
+            "trace": {
+                "keywords": error_search.keywords(error),
+                "evidence": [
+                    item["file"]
+                    for item in evidence
+                ],
+            },
+            "related_sources": related_sources,
+            "top_symbols": [],
+            "intent": "diagnose",
+        }
+
+    def _format_frames(
+        self,
+        matched,
+        frames,
+    ):
+
+        if matched:
+            lines = [
+                f"{item['file']}:{item['line']}"
+                + (f" in {item['function']}" if item["function"] else "")
+                + (f" -> matched symbol: {item['symbol']}" if item["symbol"] else " -> no symbol match")
+                for item in matched
+            ]
+            return "\n".join(lines)
+
+        if frames:
+            lines = [
+                f"{item['file']}:{item['line']}"
+                + (f" in {item['function']}" if item["function"] else "")
+                for item in frames
+            ]
+            return "\n".join(lines)
+
+        return "No stack frame could be parsed from the reported error."
+
+    def _parse_response(
+        self,
+        response,
+        error,
+        matched,
+    ):
+
+        text = re.sub(
+            r"```(?:json)?\s*",
+            "",
+            response.strip(),
+        )
+
+        diagnosis = None
+
+        try:
+            parsed = json.loads(text)
+
+            if isinstance(parsed, dict):
+                diagnosis = parsed
+        except json.JSONDecodeError:
+            pass
+
+        if not isinstance(diagnosis, dict):
+
+            decoder = json.JSONDecoder()
+
+            for start in range(len(text)):
+
+                if text[start] != "{":
+                    continue
+
+                try:
+                    obj, _ = decoder.raw_decode(text[start:])
+                except json.JSONDecodeError:
+                    continue
+
+                if not isinstance(obj, dict):
+                    continue
+
+                root_cause = obj.get("root_cause")
+
+                if (
+                    isinstance(root_cause, str)
+                    and not root_cause.lstrip().startswith("{")
+                ):
+                    diagnosis = obj
+
+        if not isinstance(diagnosis, dict):
+
+            if text:
+                diagnosis = {
+                    "root_cause": text[:4000],
+                    "location": matched[0]["symbol"] if matched else "",
+                    "explanation": "",
+                    "fixes": [],
+                }
+            else:
+                diagnosis = {}
+
+        if not diagnosis.get("root_cause"):
+            diagnosis["root_cause"] = (
+                "Could not determine the root cause from the supplied "
+                "workspace context."
+            )
+
+        if not isinstance(diagnosis.get("fixes"), list):
+            diagnosis["fixes"] = []
+
+        return diagnosis
+
+
+diagnose_service = DiagnoseService()

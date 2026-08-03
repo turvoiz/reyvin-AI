@@ -33,24 +33,18 @@ class WorkspaceCache:
 
         self._files = {}
 
-        self._files = {}
-
     def load(self, workspace="."):
 
         self.workspace = workspace
 
         self._knowledge.clear()
 
-        snapshot = workspace_snapshot.load()
+        snapshot = workspace_snapshot.load(workspace)
 
         if snapshot:
-            print("[Workspace] Loaded snapshot")
-
             self.import_data(snapshot)
 
             return
-
-        print("[Workspace] Building workspace...")
 
         self._symbols = build_symbol_index(workspace)
 
@@ -60,13 +54,17 @@ class WorkspaceCache:
 
         self._resolver = resolver_index.build(workspace)
 
-        self._calls = call_graph.build(workspace)
+        self._calls = call_graph.build(
+            workspace,
+            symbols=self._symbols,
+            resolver=self._resolver,
+        )
 
         self._trace = trace_engine
 
         self._files = file_state.scan(workspace)
 
-        workspace_snapshot.save(self.export())
+        workspace_snapshot.save(self.export(), self.workspace)
 
     def rebuild(self):
 
@@ -75,6 +73,7 @@ class WorkspaceCache:
         return incremental_rebuilder.rebuild(
             self,
             result["changed"],
+            result["removed"],
         )
 
     def reload(self):
@@ -83,6 +82,9 @@ class WorkspaceCache:
 
     def symbols(self):
         return self._symbols
+
+    def files(self):
+        return self._files
 
     def graph(self):
         return self._graph
@@ -146,6 +148,7 @@ class WorkspaceCache:
         return deadcode_analyzer.analyze(
             self._symbols,
             self._calls["reverse"],
+            self.workspace,
         )
 
     def context(self, symbol):
@@ -155,7 +158,7 @@ class WorkspaceCache:
         if not info:
             return ""
 
-        return context_builder.build(info)
+        return context_builder.build(info, self.workspace)
 
     def knowledge(self, symbol):
 
@@ -202,7 +205,7 @@ class WorkspaceCache:
 
         self._files = result["state"]
 
-        workspace_snapshot.save(self.export())
+        workspace_snapshot.save(self.export(), self.workspace)
 
         return result
 

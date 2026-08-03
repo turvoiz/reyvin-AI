@@ -8,9 +8,10 @@ class InsightService:
         symbol: str,
         model: str = "auto",
         thinking: bool = False,
+        cache=workspace_cache,
     ):
 
-        knowledge = workspace_cache.knowledge(symbol)
+        knowledge = cache.knowledge(symbol)
 
         ai = insight_ai_service.run(
             knowledge,

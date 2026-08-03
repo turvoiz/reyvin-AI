@@ -1,10 +1,15 @@
 from difflib import SequenceMatcher
+import re
 
 
 class SymbolMatcher:
+    FUZZY_THRESHOLD = 75
+
     def match(self, symbols, question):
 
         q = question.lower().strip()
+        words = re.findall(r"[a-z0-9_]+", q)
+        normalized = "".join(words)
 
         # Qualified symbol (e.g. AIService.chat) must match exactly.
         if "." in q:
@@ -29,19 +34,19 @@ class SymbolMatcher:
                 score = 1000
 
             # "AIService.chat"
-            elif cls and cls in q and method in q:
+            elif cls and cls in normalized and method in words:
                 score = 950
 
             # Qualified name appears
-            elif lname in q:
+            elif lname in words:
                 score = 900
 
             # Method only
-            elif method in q:
+            elif method in words:
                 score = 700
 
             # Class only
-            elif cls and cls in q:
+            elif cls and cls in normalized:
                 score = 600
 
             else:
@@ -60,7 +65,7 @@ class SymbolMatcher:
 
         score, _, name, symbol = ranked[0]
 
-        if score < 60:
+        if score < self.FUZZY_THRESHOLD:
             return None
 
         return name, symbol

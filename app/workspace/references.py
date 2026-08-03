@@ -93,12 +93,17 @@ class ReferenceIndex:
         workspace=".",
     ):
 
-        relative = str(Path(path).relative_to(workspace))
+        root = Path(workspace)
+        file = Path(path)
 
-        for refs in cache.values():
-            refs[:] = [r for r in refs if r["file"] != relative]
+        if not file.is_absolute():
+            file = root / file
 
-        source = Path(path).read_text(encoding="utf-8")
+        relative = str(file.relative_to(root))
+
+        self.remove_file(cache, relative)
+
+        source = file.read_text(encoding="utf-8")
 
         tree = ast.parse(source)
 
@@ -108,6 +113,11 @@ class ReferenceIndex:
 
         for symbol, refs in visitor.references.items():
             cache.setdefault(symbol, []).extend(refs)
+
+    def remove_file(self, cache, path):
+
+        for refs in cache.values():
+            refs[:] = [r for r in refs if r["file"] != path]
 
 
 reference_index = ReferenceIndex()

@@ -1,10 +1,12 @@
+from pathlib import Path
+
 from app.workspace.reader import read_file
 
 
 class ContextBuilder:
-    def build(self, symbol: dict):
+    def build(self, symbol: dict, workspace="."):
 
-        source = read_file(symbol["file"])
+        source = read_file(Path(workspace) / symbol["file"])
 
         lines = source["content"].splitlines()
 

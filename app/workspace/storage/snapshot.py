@@ -3,25 +3,30 @@ from pathlib import Path
 
 
 class WorkspaceSnapshot:
-    FILE = Path(".workspace_snapshot.json")
+    FILE_NAME = ".workspace_snapshot.json"
 
-    VERSION = 1
+    VERSION = 2
 
-    def save(self, data):
+    def path(self, workspace):
+        return Path(workspace) / self.FILE_NAME
+
+    def save(self, data, workspace):
 
         payload = {
             "version": self.VERSION,
             "data": data,
         }
 
-        self.FILE.write_text(json.dumps(payload, indent=2))
+        self.path(workspace).write_text(json.dumps(payload, indent=2))
 
-    def load(self):
+    def load(self, workspace):
 
-        if not self.FILE.exists():
+        path = self.path(workspace)
+
+        if not path.exists():
             return None
 
-        payload = json.loads(self.FILE.read_text())
+        payload = json.loads(path.read_text())
 
         if payload.get("version") != self.VERSION:
             return None

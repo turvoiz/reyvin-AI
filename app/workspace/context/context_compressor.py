@@ -47,6 +47,32 @@ class ContextCompressor:
                     "impact",
                     {},
                 ),
+                "related_sources": context.get(
+                    "related_sources",
+                    [],
+                )[:10],
+            })
+
+        elif intent == "trace":
+            base.update({
+                "calls": context.get("calls", [])[:20],
+                "trace": context.get("trace", {}),
+                "related_sources": context.get(
+                    "related_sources",
+                    [],
+                )[:10],
+            })
+
+        elif intent == "diagnose":
+            related = []
+
+            for item in context.get("related_sources", [])[:3]:
+                copy = dict(item)
+                copy["source"] = item.get("source", "")[:2500]
+                related.append(copy)
+
+            base.update({
+                "related_sources": related,
             })
 
         else:

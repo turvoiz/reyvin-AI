@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.core.settings import settings
 from app.api.v1 import api_router
 from app.workspace.cache import workspace_cache
 
@@ -9,7 +10,7 @@ from app.workspace.cache import workspace_cache
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    workspace_cache.load(".")
+    workspace_cache.load(settings.WORKSPACE_ROOT)
 
     print(f"Workspace indexed: {len(workspace_cache.symbols())} symbols")
 

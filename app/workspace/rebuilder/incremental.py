@@ -10,9 +10,8 @@ class IncrementalRebuilder:
         self,
         cache,
         changed_files,
+        removed_files,
     ):
-
-        print(f"[Incremental] {len(changed_files)} changed file(s)")
 
         rebuilt = []
 
@@ -22,31 +21,31 @@ class IncrementalRebuilder:
                 file,
             )
 
-            call_indexer.update(
-                cache,
-                cache.workspace,
-            )
-
-            graph_indexer.update(
-                cache,
-                cache.workspace,
-            )
-
             reference_indexer.update(
                 cache,
                 file,
             )
 
+            rebuilt.append(file)
+
+        for file in removed_files:
+            symbol_indexer.remove(cache, file)
+            reference_indexer.remove(cache, file)
+            rebuilt.append(file)
+
+        if rebuilt:
+            graph_indexer.update(
+                cache,
+                cache.workspace,
+            )
             resolver_indexer.update(
                 cache,
                 cache.workspace,
             )
-
-            print("[Symbol]", file)
-
-            rebuilt.append(file)
-
-        print("[Incremental] done")
+            call_indexer.update(
+                cache,
+                cache.workspace,
+            )
 
         return {
             "rebuilt": rebuilt,

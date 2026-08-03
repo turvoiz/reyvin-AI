@@ -34,7 +34,7 @@ class ContextAssembler:
             context["related_sources"] = [
                 x for x in context.get("related_sources", [])
                 if x["symbol"] in [
-                    i["symbol"]
+                    i
                     for i in context.get("impact", {}).get(
                         "affected_symbols",
                         []

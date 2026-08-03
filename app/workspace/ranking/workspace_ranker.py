@@ -26,11 +26,7 @@ class WorkspaceRanker:
         for dep in context.get("dependencies", []):
             add(dep, 20)
 
-        print("\n=== REFERENCES ===")
-        print(context.get("references"))
-
         for ref in context.get("references", []):
-            print(type(ref), ref)
             add(ref.get("symbol"), 10)
 
         ranked = sorted(

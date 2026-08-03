@@ -12,7 +12,11 @@ class CallIndexer:
         workspace,
     ):
 
-        cache._calls = self.build(workspace)
+        cache._calls = call_graph.build(
+            workspace,
+            symbols=cache._symbols,
+            resolver=cache._resolver,
+        )
 
 
 call_indexer = CallIndexer()

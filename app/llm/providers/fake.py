@@ -11,6 +11,26 @@ class FakeProvider(ChatProvider):
         thinking: bool,
     ):
 
+        if '"root_cause"' in message:
+            return {
+                "response": json.dumps(
+                    {
+                        "root_cause": "fake root cause",
+                        "location": "greeter.ts:2:greet",
+                        "explanation": "fake explanation",
+                        "fixes": [
+                            {
+                                "description": "guard the input type",
+                                "file": "greeter.ts",
+                                "symbol": "greet",
+                                "suggestion": "add a typeof guard before toUpperCase",
+                            },
+                        ],
+                    }
+                ),
+                "elapsed_ms": 1,
+            }
+
         if '"explanation"' in message:
             return {
                 "response": json.dumps(

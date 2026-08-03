@@ -5,9 +5,11 @@ from app.workspace.constants import IGNORE_DEADCODE
 
 
 class DeadCodeAnalyzer:
-    def _is_endpoint(self, path, line):
+    def _is_endpoint(self, path, line, workspace="."):
 
-        tree = ast.parse(Path(path).read_text(encoding="utf-8"))
+        tree = ast.parse(
+            Path(workspace, path).read_text(encoding="utf-8")
+        )
 
         for node in ast.walk(tree):
             if not hasattr(node, "decorator_list"):
@@ -33,7 +35,7 @@ class DeadCodeAnalyzer:
 
         return False
 
-    def analyze(self, symbols, reverse_graph):
+    def analyze(self, symbols, reverse_graph, workspace="."):
 
         dead = []
 
@@ -54,7 +56,7 @@ class DeadCodeAnalyzer:
 
             path = info["file"]
 
-            if self._is_endpoint(path, info["start_line"]):
+            if self._is_endpoint(path, info["start_line"], workspace):
                 continue
 
             dead.append(

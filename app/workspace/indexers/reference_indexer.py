@@ -18,5 +18,16 @@ class ReferenceIndexer:
             cache.workspace,
         )
 
+    def remove(
+        self,
+        cache,
+        file,
+    ):
+
+        reference_index.remove_file(
+            cache._references,
+            file,
+        )
+
 
 reference_indexer = ReferenceIndexer()

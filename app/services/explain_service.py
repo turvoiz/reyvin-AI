@@ -10,16 +10,13 @@ class ExplainService:
         symbol: str,
         model: str,
         thinking: bool,
+        cache=workspace_cache,
     ):
 
         plan = workspace_planner.plan(
-            workspace_cache,
+            cache,
             f"Explain {symbol}",
         )
-
-        print("\n===== PLAN =====")
-        print(plan)
-        print("================\n")
 
         if not plan["symbols"]:
             return {
@@ -32,6 +29,7 @@ class ExplainService:
             question=f"Explain {symbol}",
             model=model,
             thinking=thinking,
+            cache=cache,
         )
 
         return {

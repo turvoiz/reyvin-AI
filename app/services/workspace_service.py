@@ -4,18 +4,19 @@ from app.workspace.planner.workspace_planner import workspace_planner
 
 
 class WorkspaceService:
-    def search(self, query: str):
-        return workspace_cache.get(query)
+    def search(self, query: str, cache=workspace_cache):
+        return cache.get(query)
 
     def ask(
         self,
         question: str,
         model: str,
         thinking: bool,
+        cache=workspace_cache,
     ):
 
         plan = workspace_planner.plan(
-            workspace_cache,
+            cache,
             question,
         )
 
@@ -27,6 +28,7 @@ class WorkspaceService:
             question=question,
             model=model,
             thinking=thinking,
+            cache=cache,
         )
 
 

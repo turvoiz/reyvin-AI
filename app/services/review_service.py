@@ -14,23 +14,35 @@ class ReviewService:
         symbol: str,
         model: str,
         thinking: bool,
+        cache=workspace_cache,
     ):
 
         question = review_prompt.build(symbol)
 
         plan = workspace_planner.plan(
-            workspace_cache,
+            cache,
             question,
         )
+
+        if not plan["symbols"]:
+            return {
+                "symbol": symbol,
+                "review": {
+                    "summary": "Symbol not found",
+                    "strengths": [],
+                    "findings": [],
+                },
+            }
 
         review = workspace_ai_service.run(
             plan=plan,
             question=question,
             model=model,
             thinking=thinking,
+            cache=cache,
         )
 
-        context = workspace_cache.knowledge(
+        context = cache.knowledge(
             symbol
         )
 

@@ -2,6 +2,7 @@ import ast
 from pathlib import Path
 
 from app.workspace.constants import IGNORE_CALLS, IGNORE_DIRS
+from app.workspace.js_call_graph import js_call_graph
 from app.workspace.resolver import resolver_index
 from app.workspace.symbols import build_symbol_index
 
@@ -84,16 +85,20 @@ class CallVisitor(ast.NodeVisitor):
 
 
 class CallGraph:
-    def build(self, workspace):
+    def build(
+        self,
+        workspace,
+        symbols=None,
+        resolver=None,
+    ):
 
         root = Path(workspace)
 
         graph = {}
         reverse = {}
 
-        resolver = resolver_index.build(workspace)
-
-        symbols = build_symbol_index(workspace)
+        resolver = resolver if resolver is not None else resolver_index.build(workspace)
+        symbols = symbols if symbols is not None else build_symbol_index(workspace)
 
         for file in root.rglob("*.py"):
             if any(part in IGNORE_DIRS for part in file.parts):
@@ -120,6 +125,17 @@ class CallGraph:
                         "line": call["line"],
                     }
                 )
+
+        javascript = js_call_graph.build(
+            workspace,
+            symbols,
+        )
+
+        for caller, callees in javascript["forward"].items():
+            graph.setdefault(caller, []).extend(callees)
+
+        for callee, callers in javascript["reverse"].items():
+            reverse.setdefault(callee, []).extend(callers)
 
         return {
             "forward": graph,

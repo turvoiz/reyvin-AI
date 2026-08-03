@@ -1,0 +1,105 @@
+{
+  "name": "reyvin-workspace",
+  "displayName": "Reyvin Workspace Intelligence",
+  "description": "Explain, review, and inspect impact for symbols using the Reyvin Developer API.",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turvoiz/reyvin-AI.git"
+  },
+  "activationEvents": [
+    "onCommand:reyvin.explainSymbol",
+    "onCommand:reyvin.explainSelection",
+    "onCommand:reyvin.reviewSymbol",
+    "onCommand:reyvin.showImpact",
+    "onCommand:reyvin.navigateDependencies",
+    "onCommand:reyvin.findRelated",
+    "onCommand:reyvin.explainArchitecture",
+    "onCommand:reyvin.diagnoseError"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "reyvin.explainSymbol",
+        "title": "Reyvin: Explain Symbol"
+      },
+      {
+        "command": "reyvin.explainSelection",
+        "title": "Reyvin: Explain Selection"
+      },
+      {
+        "command": "reyvin.reviewSymbol",
+        "title": "Reyvin: Review Symbol"
+      },
+      {
+        "command": "reyvin.showImpact",
+        "title": "Reyvin: Show Symbol Impact"
+      },
+      {
+        "command": "reyvin.navigateDependencies",
+        "title": "Reyvin: Navigate Dependencies"
+      },
+      {
+        "command": "reyvin.findRelated",
+        "title": "Reyvin: Find Related Code"
+      },
+      {
+        "command": "reyvin.explainArchitecture",
+        "title": "Reyvin: Explain Architecture"
+      },
+      {
+        "command": "reyvin.diagnoseError",
+        "title": "Reyvin: Diagnose Error"
+      }
+    ],
+    "configuration": {
+      "title": "Reyvin",
+      "properties": {
+        "reyvin.apiBaseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8000/api/v1",
+          "description": "Base URL of the Reyvin Developer API."
+        },
+        "reyvin.project": {
+          "type": "string",
+          "default": "default",
+          "description": "Registered Reyvin workspace project ID."
+        },
+        "reyvin.apiToken": {
+          "type": "string",
+          "default": "",
+          "description": "Optional API key sent as the X-API-Key header when the Reyvin API enforces authentication."
+        },
+        "reyvin.model": {
+          "type": "string",
+          "default": "qwen",
+          "description": "LLM model used for explain, review, and architecture. Available: qwen, deepseek."
+        },
+        "reyvin.thinking": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable reasoning mode for explain, review, and architecture requests."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "check": "tsc --noEmit -p ./",
+    "test": "npm run compile && node --test 'out/*.test.js'",
+    "package": "npm run compile && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.0.0"
+  }
+}

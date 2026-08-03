@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from app.workspace.constants import IGNORE_DIRS
-from app.workspace.parser import parse_python_file
+from app.workspace.languages import iter_source_files
+from app.workspace.parser import parse_source_file
 
 
 def build_symbol_index(workspace: str):
@@ -10,11 +10,9 @@ def build_symbol_index(workspace: str):
 
     symbols = {}
 
-    for file in root.rglob("*.py"):
-        if any(part in IGNORE_DIRS for part in file.parts):
-            continue
+    for file in iter_source_files(workspace):
 
-        data = parse_python_file(str(file))
+        data = parse_source_file(str(file))
 
         relative = str(file.relative_to(root))
 
@@ -58,7 +56,10 @@ def build_file_symbols(path: str, workspace="."):
 
     file = Path(path)
 
-    data = parse_python_file(str(file))
+    if not file.is_absolute():
+        file = root / file
+
+    data = parse_source_file(str(file))
 
     relative = str(file.relative_to(root))
 

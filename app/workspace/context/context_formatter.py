@@ -1,3 +1,6 @@
+import json
+
+
 class ContextFormatter:
 
     def format(
@@ -5,8 +8,8 @@ class ContextFormatter:
         context,
     ):
 
-        callees = []
-        callers = []
+        callee_sources = []
+        related_sources = []
 
         for item in context.get("related_sources", []):
 
@@ -27,12 +30,12 @@ SOURCE:
                 c["call"] == item["symbol"]
                 for c in context.get("calls", [])
             ):
-                callees.append(block)
+                callee_sources.append(block)
 
             else:
-                callers.append(block)
+                related_sources.append(block)
 
-        callers = "\n".join(
+        caller_names = "\n".join(
             caller["caller"]
             for caller in context.get("callers", [])
         )
@@ -46,6 +49,15 @@ SOURCE:
             context.get("dependencies", [])
         )
 
+        impact = context.get("impact", {})
+        affected_symbols = "\n".join(
+            impact.get("affected_symbols", [])
+        )
+        affected_files = "\n".join(
+            impact.get("affected_files", [])
+        )
+        trace = json.dumps(context.get("trace", {}), indent=2)
+
         return f"""
 ==================================================
 PRIMARY SYMBOL
@@ -57,7 +69,7 @@ PRIMARY SYMBOL
 CALLERS
 ==================================================
 
-{callers}
+{caller_names}
 
 ==================================================
 CALLEES
@@ -70,6 +82,24 @@ DEPENDENCIES
 ==================================================
 
 {dependencies}
+
+==================================================
+IMPACT
+==================================================
+
+RISK: {impact.get("risk", "")}
+
+AFFECTED SYMBOLS:
+{affected_symbols}
+
+AFFECTED FILES:
+{affected_files}
+
+==================================================
+TRACE
+==================================================
+
+{trace}
 
 ==================================================
 SOURCE
@@ -85,13 +115,13 @@ RELATED SOURCE CODE (USE THIS AS EVIDENCE)
 CALLEE SOURCE CODE (PRIMARY EVIDENCE)
 ==================================================
 
-{''.join(callees)}
+{''.join(callee_sources)}
 
 ==================================================
 OTHER RELATED SOURCE CODE
 ==================================================
 
-{''.join(callers)}
+{''.join(related_sources)}
 
 """
 

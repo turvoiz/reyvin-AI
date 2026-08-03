@@ -35,5 +35,21 @@ class SymbolIndexer:
 
         cache.invalidate(new_symbols.keys())
 
+    def remove(
+        self,
+        cache,
+        file,
+    ):
+
+        old = [
+            name for name, info in cache._symbols.items()
+            if info["file"] == file
+        ]
+
+        for name in old:
+            cache._symbols.pop(name, None)
+
+        cache.invalidate(old)
+
 
 symbol_indexer = SymbolIndexer()
