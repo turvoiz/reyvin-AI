@@ -2,6 +2,7 @@ import json
 import re
 
 from app.services.ai_service import ai_service
+from app.services.web_search_service import web_search_service
 from app.workspace.cache import workspace_cache
 from app.workspace.context.context_assembler import context_assembler
 from app.workspace.context.context_compressor import context_compressor
@@ -75,7 +76,10 @@ class DiagnoseService:
             "If no stack frames matched, trace the root cause using the "
             "WORKSPACE CONTEXT (dependency manifest files and matched source "
             "evidence). For library, version, or policy errors, locate the "
-            "exact dependency entry or configuration in the manifests.\n\n"
+            "exact dependency entry or configuration in the manifests, and "
+            "use the WEB EVIDENCE (if supplied) to identify the current "
+            "required version, the upgrade path, and the exact file that "
+            "must change.\n\n"
             "Respond with ONLY valid JSON, no surrounding text:\n"
             "{\n"
             '  "root_cause": "one sentence root cause",\n'
@@ -86,9 +90,19 @@ class DiagnoseService:
             "}"
         )
 
+        web_evidence = self._web_evidence(error)
+
+        if web_evidence:
+            lines = [
+                f"- {item['title']} ({item['url']}): {item['body']}"
+                for item in web_evidence
+            ]
+            question += "\n\nWEB EVIDENCE (from internet search):\n" + "\n".join(lines)
+
         prompt = prompt_builder.build(
             formatted,
             question,
+            external=bool(web_evidence),
         )
 
         result = ai_service.chat(
@@ -111,6 +125,14 @@ class DiagnoseService:
             "model": result["model"],
             "elapsed_ms": result["elapsed_ms"],
         }
+
+    def _web_evidence(self, error):
+        if not web_search_service.needs_search(error):
+            return []
+
+        query = web_search_service.build_query(error)
+
+        return web_search_service.search(query)
 
     def _extract_frames(
         self,

@@ -5,6 +5,7 @@ description = "Local AI Backend"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "ddgs>=8.0.0",
     "fastapi>=0.141.1",
     "gitpython>=3.1.57",
     "ollama>=0.6.2",
@@ -17,6 +18,11 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.1",
+]
 
 [tool.uv]
 package = false

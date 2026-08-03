@@ -54,6 +54,27 @@ cat error.log | scripts/diagnose.sh -
 ```
 Hasil: frames yang di-match (file:line -> symbol), root cause, lokasi, dan saran fix. Tanpa VS Code sama sekali.
 
+### Auto-fix dari terminal (curl)
+Untuk error library/version/policy, backend otomatis **search internet (DuckDuckGo)** dan memasukkan hasilnya ke prompt sebagai web evidence (misal: versi minimum, jalur upgrade, file yang harus berubah).
+
+```bash
+# 1. Diagnose dulu
+curl -s -X POST http://127.0.0.1:8000/api/v1/diagnose-error \
+  -H "Content-Type: application/json" \
+  -d '{"project":"finvoiz","error":"...error text..."}' > /tmp/diag.json
+
+# 2. Apply fix yang disarankan (git checkpoint + commit)
+curl -s -X POST http://127.0.0.1:8000/api/v1/apply-fix \
+  -H "Content-Type: application/json" \
+  -d '{"project":"finvoiz","fix":{"description":"...","file":"package.json","symbol":"...","suggestion":"..."}}'
+
+# 3. Kalau salah, revert ke checkpoint
+curl -s -X POST "http://127.0.0.1:8000/api/v1/revert-fix?project=finvoiz" \
+  -H "Content-Type: application/json" -d '{}'
+```
+
+Alur `apply-fix`: commit checkpoint `reyvin: checkpoint before auto-fix` → LLM generate patch → `git apply` (fallback: tulis ulang file) → commit `reyvin: apply fix - ...`. `.workspace_snapshot.json` otomatis di-ignore (`.git/info/exclude`).
+
 ## 5. Pakai dari VS Code
 
 1. Buka folder repo yang sudah di-analyze.
@@ -77,6 +98,8 @@ Hasil: frames yang di-match (file:line -> symbol), root cause, lokasi, dan saran
 | `Ctrl+Alt+I`   | Reyvin: Show Symbol Impact     | siapa yang terpengaruh      |
 | `Ctrl+Alt+N`   | Reyvin: Navigate Dependencies  | lompat ke caller/callee     |
 | `Ctrl+Alt+D`   | Reyvin: Diagnose Error         | tempel/select stack trace   |
+| `Ctrl+Alt+F`   | Reyvin: Auto-Fix Error         | diagnose + pilih fix + apply (git checkpoint) |
+| `(kosong)`     | Reyvin: Revert Last Fix        | reset ke checkpoint         |
 | `(kosong)`     | Reyvin: Find Related Code      | cari kode terkait           |
 | `(kosong)`     | Reyvin: Explain Architecture   | gambaran arsitektur repo    |
 
@@ -114,4 +137,7 @@ make lint              # ruff check
 | `make analyze` gagal / index kosong | cek path WORKSPACE benar, folder valid |
 | Response kosong / error LLM | cek `make ollama`; ganti `MODEL` / setting `reyvin.model` |
 | Extension tidak muncul | `make install-extension`, reload VS Code |
+| `Auto-Fix Error` error "git repository" | target repo harus git (bukan folder biasa) |
+| Fix salah / mau batal | `Reyvin: Revert Last Fix` atau `git reset --hard <checkpoint>` |
+| `apply-fix` 422 / not found | project belum di-analyze (registry in-memory) → `make analyze` dulu |
 | Log error | `tail -f /tmp/reyvin-server.log` |

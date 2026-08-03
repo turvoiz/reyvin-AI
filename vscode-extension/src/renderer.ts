@@ -1,4 +1,4 @@
-export type ResultKind = "explain" | "explainCode" | "review" | "architecture" | "diagnose" | "json";
+export type ResultKind = "explain" | "explainCode" | "review" | "architecture" | "diagnose" | "fix" | "json";
 
 export function escapeHtml(value: string): string {
     return value.replace(/[&<>"']/g, (character) => ({
@@ -462,6 +462,54 @@ ${edges}
 `);
 }
 
+function renderFix(title: string, data: unknown): string {
+    const record = asRecord(data);
+    const applied = toText(record.applied) === "true" || record.applied === true;
+
+    const status = applied
+        ? pill("Applied", "green")
+        : pill("Failed", "red");
+
+    const file = toText(record.file)
+        ? `<div class="subtitle mono">${escapeHtml(toText(record.file))}</div>`
+        : "";
+
+    const messageBlock = toText(record.message)
+        ? section("Message", renderAnswer(record.message))
+        : "";
+
+    const commits = [];
+    if (toText(record.checkpoint_commit)) {
+        commits.push({ label: "Checkpoint", hash: toText(record.checkpoint_commit) });
+    }
+    if (toText(record.fix_commit)) {
+        commits.push({ label: "Fix commit", hash: toText(record.fix_commit) });
+    }
+
+    const commitBlock = commits.length
+        ? section("Git history", `<div class="kv-wrap">${commits.map((item) =>
+            `<div class="kv"><span class="kv-key">${escapeHtml(item.label)}</span><span class="kv-value mono">${escapeHtml(item.hash)}</span></div>`).join("")}</div>`)
+        : "";
+
+    const revertBlock = toText(record.revert)
+        ? section("Revert", `<pre class="code">${escapeHtml(toText(record.revert))}</pre>`)
+        : "";
+
+    const diffText = toText(record.diff) || toText(record.raw_diff);
+    const diffBlock = diffText
+        ? section(applied ? "Applied change" : "Generated diff (apply manually)", `<pre class="code">${escapeHtml(diffText)}</pre>`)
+        : "";
+
+    return page(title, `
+<h1 class="title">Auto-Fix ${status}</h1>
+${file}
+${messageBlock}
+${commitBlock}
+${revertBlock}
+${diffBlock}
+`);
+}
+
 function renderJson(title: string, data: unknown): string {
     return page(title, `
 <h1 class="title">${escapeHtml(title)}</h1>
@@ -473,6 +521,8 @@ export function renderResult(kind: ResultKind, title: string, data: unknown): st
     switch (kind) {
         case "diagnose":
             return renderDiagnose(title, data);
+        case "fix":
+            return renderFix(title, data);
         case "explain":
         case "explainCode":
             return renderExplain(title, data);

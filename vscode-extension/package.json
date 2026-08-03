@@ -21,7 +21,9 @@
     "onCommand:reyvin.navigateDependencies",
     "onCommand:reyvin.findRelated",
     "onCommand:reyvin.explainArchitecture",
-    "onCommand:reyvin.diagnoseError"
+    "onCommand:reyvin.diagnoseError",
+    "onCommand:reyvin.applyFix",
+    "onCommand:reyvin.revertFix"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -57,6 +59,21 @@
       {
         "command": "reyvin.diagnoseError",
         "title": "Reyvin: Diagnose Error"
+      },
+      {
+        "command": "reyvin.applyFix",
+        "title": "Reyvin: Auto-Fix Error"
+      },
+      {
+        "command": "reyvin.revertFix",
+        "title": "Reyvin: Revert Last Fix"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "reyvin.applyFix",
+        "key": "ctrl+alt+f",
+        "mac": "cmd+alt+f"
       }
     ],
     "configuration": {

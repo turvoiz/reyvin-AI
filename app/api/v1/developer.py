@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies import get_project_cache, require_api_key
 from app.schemas.workspace import (
+    WorkspaceApplyFixRequest,
     WorkspaceDiagnoseRequest,
     WorkspaceExplainCodeRequest,
     WorkspaceProjectRequest,
@@ -10,10 +11,10 @@ from app.services.architecture_service import architecture_service
 from app.services.code_service import code_service
 from app.services.diagnose_service import diagnose_service
 from app.services.explain_service import explain_service
+from app.services.fix_service import fix_service
 from app.services.review_service import review_service
 from app.workspace.project_registry import workspace_registry
 from app.workspace.search.symbol_search import symbol_search
-
 
 router = APIRouter(tags=["Developer API"])
 
@@ -137,3 +138,30 @@ def architecture(
         thinking,
         get_project_cache(project),
     )
+
+
+@router.post("/apply-fix")
+def apply_fix(
+    request: WorkspaceApplyFixRequest,
+    _: str = Depends(require_api_key),
+):
+    try:
+        return fix_service.apply(
+            request.fix,
+            request.project,
+            request.model,
+            request.thinking,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/revert-fix")
+def revert_fix(
+    project: str = "default",
+    _: str = Depends(require_api_key),
+):
+    try:
+        return fix_service.revert(project)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

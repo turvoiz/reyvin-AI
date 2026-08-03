@@ -43,3 +43,10 @@ class WorkspaceDiagnoseRequest(BaseModel):
     model: str = "qwen"
     thinking: bool = False
     project: str = "default"
+
+
+class WorkspaceApplyFixRequest(BaseModel):
+    fix: dict
+    project: str = "default"
+    model: str = "qwen"
+    thinking: bool = False

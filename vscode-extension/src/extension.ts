@@ -28,6 +28,31 @@ type SearchResult = {
     score: number;
 };
 
+type DiagnoseFix = {
+    description: string;
+    file?: string;
+    symbol?: string;
+    suggestion?: string;
+};
+
+type DiagnoseResult = {
+    diagnosis?: {
+        fixes?: DiagnoseFix[];
+    };
+};
+
+type ApplyFixResult = {
+    applied: boolean;
+    file: string;
+    method?: string;
+    diff?: string;
+    raw_diff?: string;
+    checkpoint_commit?: string;
+    fix_commit?: string;
+    revert?: string;
+    message?: string;
+};
+
 interface NavItem extends vscode.QuickPickItem {
     target?: string;
     module?: string;
@@ -352,6 +377,75 @@ export function activate(context: vscode.ExtensionContext) {
                     client.diagnoseError(error.text, error.file),
                 );
                 showResult("diagnose", "Reyvin: Diagnose Error", result);
+            } catch (error) {
+                vscode.window.showErrorMessage(String(error));
+            }
+        }),
+        vscode.commands.registerCommand("reyvin.applyFix", async () => {
+            const error = await reportedError();
+            if (!error) {
+                return;
+            }
+
+            const client = createClient(configuration());
+
+            try {
+                const result = await withProgress("Reyvin: diagnosing error...", () =>
+                    client.diagnoseError(error.text, error.file),
+                );
+
+                const fixes = (result as DiagnoseResult).diagnosis?.fixes ?? [];
+
+                if (!fixes.length) {
+                    vscode.window.showInformationMessage("No suggested fixes were produced for this error.");
+                    return;
+                }
+
+                const choice = await vscode.window.showQuickPick(
+                    fixes.map((fix, index) => ({
+                        label: `$(wrench) ${fix.description || `Fix ${index + 1}`}`,
+                        description: fix.file || fix.symbol || "",
+                        detail: fix.suggestion,
+                        fix,
+                    })),
+                    { placeHolder: "Choose a fix to apply (a git checkpoint commit is created first)" },
+                );
+
+                if (!choice) {
+                    return;
+                }
+
+                const target = choice.fix.file || choice.fix.symbol || "the file";
+                const confirm = await vscode.window.showWarningMessage(
+                    `Reyvin will modify ${target}: create a git checkpoint commit, apply the change, and commit it.`,
+                    { modal: true },
+                    "Apply",
+                    "Cancel",
+                );
+
+                if (confirm !== "Apply") {
+                    return;
+                }
+
+                const applied = await withProgress("Reyvin: applying fix...", () =>
+                    client.applyFix(choice.fix),
+                );
+
+                showResult("fix", "Reyvin: Apply Fix", applied);
+            } catch (error) {
+                vscode.window.showErrorMessage(String(error));
+            }
+        }),
+        vscode.commands.registerCommand("reyvin.revertFix", async () => {
+            const client = createClient(configuration());
+
+            try {
+                const result = await withProgress("Reyvin: reverting last fix...", () =>
+                    client.revertFix(),
+                );
+                vscode.window.showInformationMessage(
+                    `Reyvin: workspace reset to ${(result as { checkpoint?: string }).checkpoint ?? "checkpoint"}.`,
+                );
             } catch (error) {
                 vscode.window.showErrorMessage(String(error));
             }

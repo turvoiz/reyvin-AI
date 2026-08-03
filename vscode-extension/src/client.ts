@@ -103,6 +103,14 @@ export function createClient(config: ApiConfig) {
                 model: config.model ?? "qwen",
                 thinking: config.thinking ?? false,
             }),
+        applyFix: (fix: unknown) =>
+            post(`/apply-fix${llmQuery(config)}`, {
+                fix,
+                model: config.model ?? "qwen",
+                thinking: config.thinking ?? false,
+            }),
+        revertFix: () =>
+            post(`/revert-fix${llmQuery(config)}`, {}),
         knowledge: <T>(symbol: string) => request<T>(`/knowledge/${encodeURIComponent(symbol)}`),
         search: <T>(query: string) => request<T>(`/search?q=${encodeURIComponent(query)}`),
         architecture: <T>() => request<T>(`/architecture${llmQuery(config)}`),
