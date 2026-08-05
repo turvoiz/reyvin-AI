@@ -6,6 +6,11 @@ export type ApiConfig = {
     thinking?: boolean;
 };
 
+export type ChatTurn = {
+    role: "user" | "assistant";
+    content: string;
+};
+
 export function normalizeBaseUrl(baseUrl: string): string {
     return baseUrl.trim().replace(/\/+$/, "");
 }
@@ -96,19 +101,21 @@ export function createClient(config: ApiConfig) {
                 model: config.model ?? "qwen",
                 thinking: config.thinking ?? false,
             }),
-        diagnoseError: (error: string, file: string) =>
+        diagnoseError: (error: string, file: string, history: ChatTurn[] = []) =>
             post(`/diagnose-error${llmQuery(config)}`, {
                 error,
                 file,
                 model: config.model ?? "qwen",
                 thinking: config.thinking ?? false,
+                history,
             }),
-        applyFix: (fix: unknown, error = "") =>
+        applyFix: (fix: unknown, error = "", confirm = false) =>
             post(`/apply-fix${llmQuery(config)}`, {
                 fix,
                 error,
                 model: config.model ?? "qwen",
                 thinking: config.thinking ?? false,
+                confirm,
             }),
         revertFix: () =>
             post(`/revert-fix${llmQuery(config)}`, {}),

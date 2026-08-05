@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { createClient, type ApiConfig } from "./client";
+import { createClient, type ApiConfig, type ChatTurn } from "./client";
 import { escapeHtml, renderResult, type ResultKind } from "./renderer";
 
 type SymbolInfo = {
@@ -37,12 +37,16 @@ type DiagnoseFix = {
 
 type DiagnoseResult = {
     diagnosis?: {
+        status?: "question" | "diagnosed";
+        question?: string;
         fixes?: DiagnoseFix[];
     };
+    history?: ChatTurn[];
 };
 
 type ApplyFixResult = {
     applied: boolean;
+    needs_confirmation?: boolean;
     file: string;
     method?: string;
     diff?: string;
@@ -51,6 +55,7 @@ type ApplyFixResult = {
     fix_commit?: string;
     revert?: string;
     message?: string;
+    verification?: { reason?: string; confidence?: string };
 };
 
 interface NavItem extends vscode.QuickPickItem {
@@ -139,6 +144,43 @@ async function reportedError(): Promise<{ text: string; file: string } | undefin
     }
 
     return { text, file };
+}
+
+// Loops the diagnose-error call: whenever the AI responds with a
+// clarifying question instead of a diagnosis, prompt the user for an
+// answer and re-send the same error with the growing conversation
+// history, until the AI is confident enough to give a final diagnosis
+// (or the user cancels).
+async function diagnoseWithClarification(
+    client: ReturnType<typeof createClient>,
+    errorText: string,
+    file: string,
+): Promise<DiagnoseResult | undefined> {
+    let history: ChatTurn[] = [];
+
+    for (;;) {
+        const result = await withProgress("Reyvin: diagnosing error...", () =>
+            client.diagnoseError(errorText, file, history),
+        ) as DiagnoseResult;
+
+        const diagnosis = result.diagnosis;
+
+        if (diagnosis?.status !== "question" || !diagnosis.question) {
+            return result;
+        }
+
+        const answer = await vscode.window.showInputBox({
+            prompt: diagnosis.question,
+            placeHolder: "Your answer (Esc to cancel diagnosis)",
+            ignoreFocusOut: true,
+        });
+
+        if (!answer) {
+            return undefined;
+        }
+
+        history = [...(result.history ?? []), { role: "user", content: answer }];
+    }
 }
 
 function showResult(kind: ResultKind, title: string, content: unknown) {
@@ -373,9 +415,12 @@ export function activate(context: vscode.ExtensionContext) {
             const client = createClient(configuration());
 
             try {
-                const result = await withProgress("Reyvin: diagnosing error...", () =>
-                    client.diagnoseError(error.text, error.file),
-                );
+                const result = await diagnoseWithClarification(client, error.text, error.file);
+
+                if (!result) {
+                    return;
+                }
+
                 showResult("diagnose", "Reyvin: Diagnose Error", result);
             } catch (error) {
                 vscode.window.showErrorMessage(String(error));
@@ -390,11 +435,13 @@ export function activate(context: vscode.ExtensionContext) {
             const client = createClient(configuration());
 
             try {
-                const result = await withProgress("Reyvin: diagnosing error...", () =>
-                    client.diagnoseError(error.text, error.file),
-                );
+                const result = await diagnoseWithClarification(client, error.text, error.file);
 
-                const fixes = (result as DiagnoseResult).diagnosis?.fixes ?? [];
+                if (!result) {
+                    return;
+                }
+
+                const fixes = result.diagnosis?.fixes ?? [];
 
                 if (!fixes.length) {
                     vscode.window.showInformationMessage("No suggested fixes were produced for this error.");
@@ -427,9 +474,26 @@ export function activate(context: vscode.ExtensionContext) {
                     return;
                 }
 
-                const applied = await withProgress("Reyvin: applying fix...", () =>
+                let applied = await withProgress("Reyvin: applying fix...", () =>
                     client.applyFix(choice.fix, error.text),
-                );
+                ) as ApplyFixResult;
+
+                if (applied.needs_confirmation) {
+                    const proceed = await vscode.window.showWarningMessage(
+                        applied.message ?? "The AI has low confidence in this fix. Apply it anyway?",
+                        { modal: true },
+                        "Apply anyway",
+                        "Cancel",
+                    );
+
+                    if (proceed !== "Apply anyway") {
+                        return;
+                    }
+
+                    applied = await withProgress("Reyvin: applying fix...", () =>
+                        client.applyFix(choice.fix, error.text, true),
+                    ) as ApplyFixResult;
+                }
 
                 showResult("fix", "Reyvin: Apply Fix", applied);
             } catch (error) {

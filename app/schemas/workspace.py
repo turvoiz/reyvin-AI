@@ -37,12 +37,18 @@ class WorkspaceExplainCodeRequest(BaseModel):
     project: str = "default"
 
 
+class ChatTurn(BaseModel):
+    role: str
+    content: str
+
+
 class WorkspaceDiagnoseRequest(BaseModel):
     error: str
     file: str = ""
     model: str = "qwen"
     thinking: bool = False
     project: str = "default"
+    history: list[ChatTurn] = []
 
 
 class WorkspaceApplyFixRequest(BaseModel):
@@ -51,3 +57,4 @@ class WorkspaceApplyFixRequest(BaseModel):
     project: str = "default"
     model: str = "qwen"
     thinking: bool = False
+    confirm: bool = False

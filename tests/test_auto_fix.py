@@ -602,3 +602,307 @@ def test_diagnose_warns_on_stack_mismatch(tmp_path, monkeypatch):
     assert "STACK MISMATCH WARNING" in captured["message"]
 
     assert result["diagnosis"]["fixes"] == []
+
+
+def test_diagnose_forces_empty_fixes_when_model_ignores_mismatch_warning(
+    tmp_path, monkeypatch
+):
+    # Regression: the target file named by the model ("pyproject.toml") is a
+    # real file in this (non-mobile) workspace, so pruning alone would not
+    # remove it. The mismatch guard must force fixes=[] regardless of what
+    # the model returned.
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = \"x\"\n")
+
+    from app.workspace.cache import WorkspaceCache
+
+    cache = WorkspaceCache()
+
+    cache.load(str(tmp_path))
+
+    def fake_chat(model, message, thinking):
+        return {
+            "response": json.dumps(
+                {
+                    "root_cause": "outdated billing library",
+                    "location": "pyproject.toml",
+                    "explanation": "bump version",
+                    "fixes": [
+                        {
+                            "description": "bump ollama version",
+                            "file": "pyproject.toml",
+                            "symbol": "",
+                            "suggestion": "bump dependency version",
+                        },
+                    ],
+                }
+            ),
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    web_search_service._search_func = lambda query, limit: []
+
+    try:
+        result = diagnose_service.diagnose(
+            "App must use Google Play Billing Library version 8.0.0 or later",
+            file="",
+            model="qwen",
+            thinking=False,
+            cache=cache,
+        )
+    finally:
+        web_search_service._search_func = None
+
+    assert result["diagnosis"]["fixes"] == []
+
+
+def test_fix_service_rejects_stack_mismatch(tmp_path, monkeypatch):
+    project_id = "fix-mismatch"
+    _init_git_repo(tmp_path, filename="pyproject.toml", content="[project]\n")
+
+    client.post(
+        "/api/v1/analyze",
+        json={"project_id": project_id, "workspace": str(tmp_path)},
+    )
+
+    called = {"count": 0}
+
+    def fake_chat(model, message, thinking):
+        called["count"] += 1
+
+        return {
+            "response": GREETER_DIFF,
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    try:
+        fix_service.apply(
+            {
+                "description": "bump billing library",
+                "file": "pyproject.toml",
+                "symbol": "",
+                "suggestion": "bump version",
+            },
+            project=project_id,
+            model="qwen",
+            thinking=False,
+            error="App must use Google Play Billing Library version 8.0.0 or later",
+        )
+
+        raised = False
+    except ValueError as error:
+        raised = True
+        assert "does not look like a mobile project" in str(error)
+
+    assert raised
+
+    # No LLM call should happen once the mismatch guard rejects the request.
+    assert called["count"] == 0
+
+
+def test_diagnose_asks_clarifying_question_and_updates_history(monkeypatch):
+
+    def fake_chat(model, message, thinking):
+        return {
+            "response": json.dumps(
+                {
+                    "status": "question",
+                    "question": "Which subscription SDK does this app use?",
+                }
+            ),
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    web_search_service._search_func = lambda query, limit: []
+
+    try:
+        result = diagnose_service.diagnose(
+            "Something went wrong",
+            file="",
+            model="qwen",
+            thinking=False,
+        )
+    finally:
+        web_search_service._search_func = None
+
+    assert result["diagnosis"]["status"] == "question"
+
+    assert (
+        result["diagnosis"]["question"]
+        == "Which subscription SDK does this app use?"
+    )
+
+    assert result["diagnosis"]["fixes"] == []
+
+    assert result["history"] == [
+        {
+            "role": "assistant",
+            "content": "Which subscription SDK does this app use?",
+        }
+    ]
+
+
+def test_diagnose_stops_asking_after_clarifying_question_limit(monkeypatch):
+
+    def fake_chat(model, message, thinking):
+        return {
+            "response": json.dumps(
+                {
+                    "status": "question",
+                    "question": "Are you sure?",
+                }
+            ),
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    web_search_service._search_func = lambda query, limit: []
+
+    history = [
+        {"role": "assistant", "content": "Q1"},
+        {"role": "user", "content": "A1"},
+        {"role": "assistant", "content": "Q2"},
+        {"role": "user", "content": "A2"},
+        {"role": "assistant", "content": "Q3"},
+        {"role": "user", "content": "A3"},
+    ]
+
+    try:
+        result = diagnose_service.diagnose(
+            "Something went wrong",
+            file="",
+            model="qwen",
+            thinking=False,
+            history=history,
+        )
+    finally:
+        web_search_service._search_func = None
+
+    # 3 assistant turns already used up the MAX_CLARIFYING_TURNS budget, so
+    # the model is forced to a final diagnosis even though it asked again.
+    assert result["diagnosis"]["status"] == "diagnosed"
+
+    assert result["diagnosis"]["fixes"] == []
+
+
+def test_fix_service_asks_confirmation_on_low_confidence(tmp_path, monkeypatch):
+
+    project_id = "fix-low-confidence"
+    original = _init_git_repo(tmp_path)
+
+    client.post(
+        "/api/v1/analyze",
+        json={"project_id": project_id, "workspace": str(tmp_path)},
+    )
+
+    calls = {"count": 0}
+
+    def fake_chat(model, message, thinking):
+        calls["count"] += 1
+
+        if calls["count"] == 1:
+            response = GREETER_DIFF
+        else:
+            response = json.dumps(
+                {
+                    "fixed": True,
+                    "confidence": "low",
+                    "reason": "the fix might not cover every call site",
+                }
+            )
+
+        return {
+            "response": response,
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    result = fix_service.apply(
+        {
+            "description": "guard the input type",
+            "file": "greeter.ts",
+            "symbol": "greet",
+            "suggestion": "wrap in String()",
+        },
+        project=project_id,
+        model="qwen",
+        thinking=False,
+        error="TypeError: name.toUpperCase is not a function",
+    )
+
+    assert result["applied"] is False
+
+    assert result["needs_confirmation"] is True
+
+    assert "low-confidence" in result["message"]
+
+    # Rejected without commit: workspace is back to the pre-fix state.
+    assert (tmp_path / "greeter.ts").read_text() == original
+
+
+def test_fix_service_confirm_true_bypasses_low_confidence_gate(tmp_path, monkeypatch):
+
+    project_id = "fix-low-confidence-confirmed"
+    _init_git_repo(tmp_path)
+
+    client.post(
+        "/api/v1/analyze",
+        json={"project_id": project_id, "workspace": str(tmp_path)},
+    )
+
+    def fake_chat(model, message, thinking):
+        response = (
+            GREETER_DIFF
+            if "unified diff" in message
+            else json.dumps(
+                {
+                    "fixed": True,
+                    "confidence": "low",
+                    "reason": "the fix might not cover every call site",
+                }
+            )
+        )
+
+        return {
+            "response": response,
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    result = fix_service.apply(
+        {
+            "description": "guard the input type",
+            "file": "greeter.ts",
+            "symbol": "greet",
+            "suggestion": "wrap in String()",
+        },
+        project=project_id,
+        model="qwen",
+        thinking=False,
+        error="TypeError: name.toUpperCase is not a function",
+        confirm=True,
+    )
+
+    assert result["applied"] is True
+
+    assert "String(name).toUpperCase()" in (tmp_path / "greeter.ts").read_text()

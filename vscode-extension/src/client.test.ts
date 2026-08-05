@@ -165,6 +165,27 @@ test("diagnoseError sends the error and file as JSON", async () => {
         file: "module.ts",
         model: "qwen",
         thinking: false,
+        history: [],
+    });
+});
+
+test("diagnoseError forwards conversation history", async () => {
+    requests = [];
+    const client = createClient({ apiBaseUrl: baseUrl(), project: "p", apiToken: "token" });
+
+    const history = [
+        { role: "assistant" as const, content: "Which SDK does this app use?" },
+        { role: "user" as const, content: "react-native-purchases" },
+    ];
+
+    await client.diagnoseError("TypeError: boom", "module.ts", history);
+
+    assert.deepEqual(JSON.parse((requests[0] as { body?: string }).body ?? "{}"), {
+        error: "TypeError: boom",
+        file: "module.ts",
+        model: "qwen",
+        thinking: false,
+        history,
     });
 });
 

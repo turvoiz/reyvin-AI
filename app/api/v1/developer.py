@@ -104,6 +104,7 @@ def diagnose_error(
         request.model,
         request.thinking,
         get_project_cache(request.project),
+        [turn.model_dump() for turn in request.history],
     )
 
 
@@ -152,6 +153,7 @@ def apply_fix(
             request.model,
             request.thinking,
             request.error,
+            request.confirm,
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

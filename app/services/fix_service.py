@@ -7,6 +7,7 @@ from app.services.ai_service import ai_service
 from app.services.web_search_service import web_search_service
 from app.workspace.project_registry import workspace_registry
 from app.workspace.prompt_builder import prompt_builder
+from app.workspace.tech_mismatch import stack_mismatch
 
 DIFF_BLOCK = re.compile(r"```(?:diff)?\s*(.*?)```", re.DOTALL)
 CODE_BLOCK = re.compile(r"```(?:[a-zA-Z]*)\s*(.*?)```", re.DOTALL)
@@ -21,7 +22,15 @@ class FixService:
     def __init__(self):
         self._checkpoints = {}
 
-    def apply(self, fix, project="default", model="qwen", thinking=False, error=""):
+    def apply(
+        self,
+        fix,
+        project="default",
+        model="qwen",
+        thinking=False,
+        error="",
+        confirm=False,
+    ):
         cache = workspace_registry.get(project)
         workspace = Path(cache.workspace)
 
@@ -29,6 +38,17 @@ class FixService:
             raise ValueError(
                 "Auto-fix requires a git repository. "
                 f"'{workspace}' is not inside a git work tree."
+            )
+
+        if error and stack_mismatch(workspace, error):
+            raise ValueError(
+                "The reported error references Android/iOS/mobile tooling "
+                f"(e.g. Google Play Billing), but the workspace for project "
+                f"'{project}' ('{workspace}') does not look like a mobile "
+                "project. Refusing to apply a fix — the error likely "
+                "belongs to a different repository. Re-run `make analyze "
+                "WORKSPACE=... PROJECT=...` against the correct workspace "
+                "before applying this fix."
             )
 
         relative, source = self._resolve_target(cache, workspace, fix)
@@ -99,6 +119,16 @@ class FixService:
                 f"Verification rejected the change: {reason}",
             )
 
+        if (
+            isinstance(verification, dict)
+            and verification.get("confidence") == "low"
+            and not confirm
+        ):
+            self._reset_to(workspace, checkpoint)
+            return self._needs_confirmation(
+                relative, working_diff, checkpoint, error, verification
+            )
+
         cache.reload()
 
         actual_diff = working_diff or self._git(workspace, "diff")[1]
@@ -142,6 +172,26 @@ class FixService:
             "reverted": True,
             "checkpoint": checkpoint,
             "message": f"Workspace reset to {checkpoint}.",
+        }
+
+    def _needs_confirmation(self, relative, diff, checkpoint, error, verification):
+        reason = verification.get("reason") or "no reason given"
+
+        return {
+            "applied": False,
+            "needs_confirmation": True,
+            "file": relative,
+            "diff": diff,
+            "checkpoint_commit": checkpoint,
+            "revert": f"git reset --hard {checkpoint}",
+            "message": (
+                "The AI is only low-confidence that this change fixes the "
+                f"reported error: {reason}. Resend this same request with "
+                '"confirm": true to apply it anyway, or refine the fix '
+                "description first."
+            ),
+            "verification": verification,
+            "error": (error or "")[:2000],
         }
 
     def _failed(self, relative, diff, checkpoint, error, message):

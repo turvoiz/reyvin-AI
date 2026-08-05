@@ -11,6 +11,7 @@ from app.workspace.context.context_formatter import context_formatter
 from app.workspace.prompt_builder import prompt_builder
 from app.workspace.search.error_search import error_search
 from app.workspace.symbol_matcher import symbol_matcher
+from app.workspace.tech_mismatch import stack_mismatch
 
 
 class DiagnoseService:
@@ -27,19 +28,8 @@ class DiagnoseService:
     PATH_LINE = re.compile(
         r"([\w./\\-]+\.(?:py|ts|tsx|js|jsx)):(\d+)"
     )
-    MOBILE_ERROR_PATTERN = re.compile(
-        r"(play billing|billing library|google play|play console|compilesdk|"
-        r"targetsdk|react[- ]native|expo|flutter|xcode|app store|"
-        r"bundle identifier|\bandroid\b|\bgradle\b|\bios\b|\badb\b)",
-        re.IGNORECASE,
-    )
-    MOBILE_WORKSPACE_HINTS = (
-        "react-native",
-        "react_native",
-        "expo",
-        "purchases",
-        "flutter",
-    )
+
+    MAX_CLARIFYING_TURNS = 3
 
     def diagnose(
         self,
@@ -48,7 +38,10 @@ class DiagnoseService:
         model="qwen",
         thinking=False,
         cache=workspace_cache,
+        history=None,
     ):
+
+        history = history or []
 
         frames = self._extract_frames(
             error,
@@ -110,15 +103,48 @@ class DiagnoseService:
             "supplied) supports the target version and upgrade path.\n"
             "- If the workspace does not contain the technology the error "
             "refers to, return fixes: [] and state the mismatch in root_cause.\n\n"
-            "Respond with ONLY valid JSON, no surrounding text:\n"
-            "{\n"
-            '  "root_cause": "one sentence root cause",\n'
-            '  "location": "file:line:symbol (or the closest matched symbol)",\n'
-            '  "explanation": "detailed explanation tied to the code evidence",\n'
-            '  "fixes": [{"description": "what to fix", "file": "", '
-            '"symbol": "", "suggestion": "concrete code-level fix"}]\n'
-            "}"
         )
+
+        questions_asked = sum(
+            1 for turn in history if turn.get("role") == "assistant"
+        )
+
+        remaining_questions = max(0, self.MAX_CLARIFYING_TURNS - questions_asked)
+
+        if remaining_questions > 0:
+            question += (
+                "You may respond in one of two ways:\n"
+                "1. If the supplied context is genuinely insufficient to "
+                "pinpoint the root cause, ask ONE clarifying question "
+                'instead of guessing: {"status": "question", "question": '
+                '"..."}\n'
+                "2. Otherwise, respond with the full diagnosis: "
+                '{"status": "diagnosed", "root_cause": "one sentence root '
+                'cause", "location": "file:line:symbol (or the closest '
+                'matched symbol)", "explanation": "detailed explanation '
+                'tied to the code evidence", "fixes": [{"description": '
+                '"what to fix", "file": "", "symbol": "", "suggestion": '
+                '"concrete code-level fix"}]}\n'
+                f"You have {remaining_questions} clarifying question(s) "
+                "left in this conversation. Prefer diagnosing directly "
+                "whenever the evidence is enough — do not ask a question "
+                "you can already answer from the supplied context, and "
+                "never repeat a question already asked in the conversation "
+                "below.\n\n"
+                "Respond with ONLY valid JSON, no surrounding text."
+            )
+        else:
+            question += (
+                "You have used all your clarifying questions for this "
+                "conversation. Give your best-effort full diagnosis now "
+                'using everything gathered so far: {"status": "diagnosed", '
+                '"root_cause": "...", "location": "...", "explanation": '
+                '"...", "fixes": [...]}\n\n'
+                "Respond with ONLY valid JSON, no surrounding text."
+            )
+
+        if history:
+            question += "\n\nCONVERSATION SO FAR:\n" + self._format_history(history)
 
         web_evidence = self._web_evidence(error)
 
@@ -163,27 +189,66 @@ class DiagnoseService:
             response,
             error,
             matched,
+            history,
         )
 
         if isinstance(diagnosis, dict):
-            diagnosis["fixes"] = self._prune_fixes(
-                cache,
-                diagnosis.get("fixes") or [],
-            )
-
-            if mismatch and not diagnosis.get("fixes"):
+            if mismatch:
+                # Enforced in code, not just requested in the prompt: a small
+                # local model will sometimes ignore the "return fixes: []"
+                # instruction (or the "ask a question" option) and invent a
+                # fix anyway (e.g. editing a file that happens to exist in
+                # the workspace by coincidence). This always wins, even
+                # mid-conversation.
+                diagnosis["status"] = "diagnosed"
+                diagnosis["question"] = ""
+                diagnosis["fixes"] = []
                 diagnosis["explanation"] = (
                     "The reported error appears to belong to a different "
                     "project than this workspace. No valid fix location was "
                     "found, so no fix was suggested."
                 )
+            elif diagnosis.get("status") == "diagnosed":
+                diagnosis["fixes"] = self._prune_fixes(
+                    cache,
+                    diagnosis.get("fixes") or [],
+                )
 
         return {
             "frames": matched,
             "diagnosis": diagnosis,
+            "history": self._append_turn(history, diagnosis),
             "model": result["model"],
             "elapsed_ms": result["elapsed_ms"],
         }
+
+    def _format_history(self, history):
+        lines = []
+
+        for turn in history:
+            role = turn.get("role", "user")
+            content = turn.get("content", "")
+            speaker = "AI" if role == "assistant" else "USER"
+            lines.append(f"{speaker}: {content}")
+
+        return "\n".join(lines)
+
+    def _append_turn(self, history, diagnosis):
+        updated = list(history)
+
+        if diagnosis.get("status") == "question":
+            updated.append(
+                {"role": "assistant", "content": diagnosis.get("question", "")}
+            )
+        else:
+            updated.append(
+                {
+                    "role": "assistant",
+                    "content": f"Diagnosed: {diagnosis.get('root_cause', '')}",
+                }
+            )
+
+        return updated
 
     def _web_evidence(self, error):
         if not web_search_service.needs_search(error):
@@ -194,40 +259,7 @@ class DiagnoseService:
         return web_search_service.search(query)
 
     def _stack_mismatch(self, cache, error):
-        if not self._error_hints_mobile(error):
-            return False
-
-        return not self._workspace_has_mobile_stack(cache)
-
-    def _error_hints_mobile(self, error):
-        return bool(self.MOBILE_ERROR_PATTERN.search(error or ""))
-
-    def _workspace_has_mobile_stack(self, cache):
-        root = Path(cache.workspace)
-
-        if (root / "android").is_dir():
-            return True
-
-        if (root / "ios").is_dir():
-            return True
-
-        if (root / "pubspec.yaml").is_file():
-            return True
-
-        package = root / "package.json"
-
-        if package.is_file():
-            try:
-                text = package.read_text(encoding="utf-8", errors="ignore")
-            except OSError:
-                return False
-
-            lowered = text.lower()
-
-            if any(hint in lowered for hint in self.MOBILE_WORKSPACE_HINTS):
-                return True
-
-        return False
+        return stack_mismatch(cache.workspace, error)
 
     def _prune_fixes(self, cache, fixes):
         root = Path(cache.workspace).resolve()
@@ -544,12 +576,32 @@ class DiagnoseService:
 
         return "No stack frame could be parsed from the reported error."
 
+    def _looks_like_diagnosis(self, obj):
+        if not isinstance(obj, dict):
+            return False
+
+        question = obj.get("question")
+
+        if (
+            obj.get("status") == "question"
+            and isinstance(question, str)
+            and question.strip()
+        ):
+            return True
+
+        root_cause = obj.get("root_cause")
+
+        return isinstance(root_cause, str) and not root_cause.lstrip().startswith("{")
+
     def _parse_response(
         self,
         response,
         error,
         matched,
+        history=None,
     ):
+
+        history = history or []
 
         text = re.sub(
             r"```(?:json)?\s*",
@@ -581,15 +633,7 @@ class DiagnoseService:
                 except json.JSONDecodeError:
                     continue
 
-                if not isinstance(obj, dict):
-                    continue
-
-                root_cause = obj.get("root_cause")
-
-                if (
-                    isinstance(root_cause, str)
-                    and not root_cause.lstrip().startswith("{")
-                ):
+                if self._looks_like_diagnosis(obj):
                     diagnosis = obj
 
         if not isinstance(diagnosis, dict):
@@ -604,10 +648,40 @@ class DiagnoseService:
             else:
                 diagnosis = {}
 
+        questions_asked = sum(
+            1 for turn in history if turn.get("role") == "assistant"
+        )
+
+        can_still_ask = questions_asked < self.MAX_CLARIFYING_TURNS
+
+        is_question = (
+            can_still_ask
+            and diagnosis.get("status") == "question"
+            and isinstance(diagnosis.get("question"), str)
+            and diagnosis["question"].strip()
+        )
+
+        if is_question:
+            diagnosis["status"] = "question"
+            diagnosis.setdefault("root_cause", "")
+            diagnosis.setdefault(
+                "location", matched[0]["symbol"] if matched else ""
+            )
+            diagnosis.setdefault("explanation", "")
+            diagnosis["fixes"] = []
+
+            return diagnosis
+
+        diagnosis["status"] = "diagnosed"
+        diagnosis["question"] = ""
+
         if not diagnosis.get("root_cause"):
             diagnosis["root_cause"] = (
                 "Could not determine the root cause from the supplied "
                 "workspace context."
+                if can_still_ask
+                else "Reached the clarifying-question limit without enough "
+                "evidence to pinpoint a root cause."
             )
 
         if not isinstance(diagnosis.get("fixes"), list):
