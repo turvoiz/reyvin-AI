@@ -132,6 +132,7 @@ test("explainCode sends the code, file, and line range as JSON", async () => {
         end_line: 5,
         model: "qwen",
         thinking: false,
+        project: "p",
     });
 });
 
@@ -166,6 +167,7 @@ test("diagnoseError sends the error and file as JSON", async () => {
         model: "qwen",
         thinking: false,
         history: [],
+        project: "p",
     });
 });
 
@@ -186,7 +188,19 @@ test("diagnoseError forwards conversation history", async () => {
         model: "qwen",
         thinking: false,
         history,
+        project: "p",
     });
+});
+
+test("applyFix sends the project in the JSON body, not just the query string", async () => {
+    requests = [];
+    const client = createClient({ apiBaseUrl: baseUrl(), project: "finvoiz", apiToken: "token" });
+
+    await client.applyFix({ description: "x", file: "a.ts" }, "TypeError: boom", true);
+
+    const body = JSON.parse((requests[0] as { body?: string }).body ?? "{}");
+    assert.equal(body.project, "finvoiz");
+    assert.equal(body.confirm, true);
 });
 
 test("client throws a descriptive error on non-2xx responses", async () => {

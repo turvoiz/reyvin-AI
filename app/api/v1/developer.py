@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.v1.dependencies import get_project_cache, require_api_key
 from app.schemas.workspace import (
@@ -17,6 +17,19 @@ from app.workspace.project_registry import workspace_registry
 from app.workspace.search.symbol_search import symbol_search
 
 router = APIRouter(tags=["Developer API"])
+
+
+def _resolve_project(body_project: str, query_project: str | None) -> str:
+    """POST bodies are the source of truth for `project`, but a client that
+    only puts it on the URL (a `?project=...` query string next to a JSON
+    body model) would otherwise silently fall back to "default" — the
+    request still succeeds, just against the wrong workspace. If the body
+    left it at the default and the query string names something else,
+    trust the query string instead of failing silently."""
+    if query_project and body_project == "default":
+        return query_project
+
+    return body_project
 
 
 @router.post("/analyze")
@@ -80,6 +93,7 @@ def impact(symbol: str, project: str = "default", _: str = Depends(require_api_k
 @router.post("/explain-code")
 def explain_code(
     request: WorkspaceExplainCodeRequest,
+    project: str | None = Query(default=None),
     _: str = Depends(require_api_key),
 ):
     return code_service.explain(
@@ -89,13 +103,14 @@ def explain_code(
         request.end_line,
         request.model,
         request.thinking,
-        get_project_cache(request.project),
+        get_project_cache(_resolve_project(request.project, project)),
     )
 
 
 @router.post("/diagnose-error")
 def diagnose_error(
     request: WorkspaceDiagnoseRequest,
+    project: str | None = Query(default=None),
     _: str = Depends(require_api_key),
 ):
     return diagnose_service.diagnose(
@@ -103,7 +118,7 @@ def diagnose_error(
         request.file,
         request.model,
         request.thinking,
-        get_project_cache(request.project),
+        get_project_cache(_resolve_project(request.project, project)),
         [turn.model_dump() for turn in request.history],
     )
 
@@ -144,12 +159,13 @@ def architecture(
 @router.post("/apply-fix")
 def apply_fix(
     request: WorkspaceApplyFixRequest,
+    project: str | None = Query(default=None),
     _: str = Depends(require_api_key),
 ):
     try:
         return fix_service.apply(
             request.fix,
-            request.project,
+            _resolve_project(request.project, project),
             request.model,
             request.thinking,
             request.error,

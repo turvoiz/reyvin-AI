@@ -798,6 +798,66 @@ def test_developer_api_diagnoses_error_with_matched_symbol(tmp_path):
     assert data["diagnosis"]["fixes"][0]["symbol"] == "greet"
 
 
+def test_diagnose_error_falls_back_to_query_string_project(tmp_path):
+    # Regression: a client that puts `project` only on the URL
+    # (`?project=...`) next to a JSON body that omits it must not silently
+    # be routed to the "default" workspace — that previously happened
+    # because FastAPI binds a Pydantic body model exclusively from the
+    # JSON body, ignoring the query string entirely.
+    (tmp_path / "greeter.ts").write_text(
+        "export function greet(name: string) {\n"
+        "  return name.toUpperCase()\n"
+        "}\n"
+    )
+
+    analyze = client.post(
+        "/api/v1/analyze",
+        json={"project_id": "diag-query-fallback", "workspace": str(tmp_path)},
+    )
+
+    assert analyze.status_code == 200
+
+    r = client.post(
+        "/api/v1/diagnose-error?project=diag-query-fallback",
+        json={
+            "error": (
+                "TypeError: name.toUpperCase is not a function\n"
+                "    at greet (greeter.ts:2:16)"
+            ),
+            "file": "",
+            # note: no "project" key in the body at all
+        },
+    )
+
+    assert r.status_code == 200
+
+    data = r.json()
+
+    assert any(frame["symbol"] == "greet" for frame in data["frames"])
+
+
+def test_diagnose_error_body_project_wins_over_query_string(tmp_path):
+    (tmp_path / "other.ts").write_text("export const x = 1\n")
+
+    analyze = client.post(
+        "/api/v1/analyze",
+        json={"project_id": "diag-body-wins", "workspace": str(tmp_path)},
+    )
+
+    assert analyze.status_code == 200
+
+    r = client.post(
+        "/api/v1/diagnose-error?project=nonexistent-project",
+        json={
+            "error": "TypeError: boom",
+            "file": "",
+            "project": "diag-body-wins",
+        },
+    )
+
+    assert r.status_code == 200
+
+
 def test_diagnose_service_falls_back_when_llm_returns_empty(monkeypatch, tmp_path):
 
     (tmp_path / "module.py").write_text(

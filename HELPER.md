@@ -98,7 +98,7 @@ Alur `apply-fix`: commit checkpoint `reyvin: checkpoint before auto-fix` → LLM
 | `Ctrl+Alt+I`   | Reyvin: Show Symbol Impact     | siapa yang terpengaruh      |
 | `Ctrl+Alt+N`   | Reyvin: Navigate Dependencies  | lompat ke caller/callee     |
 | `Ctrl+Alt+D`   | Reyvin: Diagnose Error         | tempel/select stack trace   |
-| `Ctrl+Alt+F`   | Reyvin: Auto-Fix Error         | diagnose + pilih fix + apply (git checkpoint) |
+| `Ctrl+Alt+A`   | Reyvin: Auto-Fix Error         | diagnose + pilih fix + apply (git checkpoint) |
 | `(kosong)`     | Reyvin: Revert Last Fix        | reset ke checkpoint         |
 | `(kosong)`     | Reyvin: Find Related Code      | cari kode terkait           |
 | `(kosong)`     | Reyvin: Explain Architecture   | gambaran arsitektur repo    |

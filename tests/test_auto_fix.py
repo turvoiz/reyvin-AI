@@ -906,3 +906,85 @@ def test_fix_service_confirm_true_bypasses_low_confidence_gate(tmp_path, monkeyp
     assert result["applied"] is True
 
     assert "String(name).toUpperCase()" in (tmp_path / "greeter.ts").read_text()
+
+
+def test_diagnose_prompt_asks_for_every_repeated_call_site(monkeypatch):
+
+    captured = {}
+
+    def fake_chat(model, message, thinking):
+        captured["message"] = message
+
+        return {
+            "response": json.dumps(
+                {
+                    "status": "diagnosed",
+                    "root_cause": "x",
+                    "location": "a.ts:1",
+                    "explanation": "x",
+                    "fixes": [],
+                }
+            ),
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    web_search_service._search_func = lambda query, limit: []
+
+    try:
+        diagnose_service.diagnose(
+            "TypeError: name.toUpperCase is not a function",
+            file="",
+            model="qwen",
+            thinking=False,
+        )
+    finally:
+        web_search_service._search_func = None
+
+    assert "do not silently fix only one" in captured["message"]
+
+    assert "incomplete" in captured["message"]
+
+
+def test_fix_service_diff_prompt_requires_every_call_site(tmp_path, monkeypatch):
+
+    project_id = "fix-multi-site"
+    _init_git_repo(tmp_path)
+
+    client.post(
+        "/api/v1/analyze",
+        json={"project_id": project_id, "workspace": str(tmp_path)},
+    )
+
+    captured = {}
+
+    def fake_chat(model, message, thinking):
+        captured["message"] = message
+
+        return {
+            "response": GREETER_DIFF,
+            "model": "qwen",
+            "thinking": False,
+            "elapsed_ms": 1,
+        }
+
+    monkeypatch.setattr(ai_module.ai_service, "chat", fake_chat)
+
+    fix_service.apply(
+        {
+            "description": "pass precision to every parseAmountInput(stockShares) call",
+            "file": "greeter.ts",
+            "symbol": "greet",
+            "suggestion": "add the missing argument at lines 159, 774 and 1007",
+        },
+        project=project_id,
+        model="qwen",
+        thinking=False,
+    )
+
+    assert "patch every one of them with a separate hunk" in captured["message"]
+
+    assert "do not stop after the first match" in captured["message"]

@@ -100,6 +100,7 @@ export function createClient(config: ApiConfig) {
                 end_line: endLine,
                 model: config.model ?? "qwen",
                 thinking: config.thinking ?? false,
+                project: config.project,
             }),
         diagnoseError: (error: string, file: string, history: ChatTurn[] = []) =>
             post(`/diagnose-error${llmQuery(config)}`, {
@@ -108,6 +109,7 @@ export function createClient(config: ApiConfig) {
                 model: config.model ?? "qwen",
                 thinking: config.thinking ?? false,
                 history,
+                project: config.project,
             }),
         applyFix: (fix: unknown, error = "", confirm = false) =>
             post(`/apply-fix${llmQuery(config)}`, {
@@ -116,6 +118,7 @@ export function createClient(config: ApiConfig) {
                 model: config.model ?? "qwen",
                 thinking: config.thinking ?? false,
                 confirm,
+                project: config.project,
             }),
         revertFix: () =>
             post(`/revert-fix${llmQuery(config)}`, {}),

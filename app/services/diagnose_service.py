@@ -102,7 +102,15 @@ class DiagnoseService:
             "the workspace actually declares it, and the WEB EVIDENCE (if "
             "supplied) supports the target version and upgrade path.\n"
             "- If the workspace does not contain the technology the error "
-            "refers to, return fixes: [] and state the mismatch in root_cause.\n\n"
+            "refers to, return fixes: [] and state the mismatch in root_cause.\n"
+            "- If the same buggy pattern is repeated at more than one call "
+            "site (for example the same function called without a required "
+            "argument in several places), do not silently fix only one. "
+            "List every affected file:line you can see in the supplied "
+            "context inside that fix's \"suggestion\" text, so the fix can "
+            "be applied to all of them in a single pass. A fix that only "
+            "covers some of the known call sites is incomplete — never "
+            "present it as a full fix.\n\n"
         )
 
         questions_asked = sum(
